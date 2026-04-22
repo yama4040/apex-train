@@ -182,7 +182,7 @@ class Learner:
         self.target_q_network = QNetwork(self.num_states)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
 
-    ＃ネットワークの定義と初期化
+    #ネットワークの定義と初期化
     def define_network(self):
         env = Environment(self.time_step)
         state = env.reset(11,0.0)
@@ -425,4 +425,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
 
 if __name__ == "__main__":
     #main(num_actors=50, gamma=0.9975, num_states=9, time_step=1.0)
-    main(num_actors=2, gamma=0.9975, num_states=9, time_step=1.0)
+    main(num_actors=15, gamma=0.9975, num_states=9, time_step=1.0)
