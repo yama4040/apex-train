@@ -1,0 +1,925 @@
+2024-03-21 05:12:29.518221: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2024-03-21 05:12:29.920684: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+2024-03-21 05:12:29.920736: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+2024-03-21 05:12:29.920740: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+2024-03-21 05:12:30.565803: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2024-03-21 05:12:30.594172: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2024-03-21 05:12:30.594309: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2024-03-21 05:12:32,112	INFO worker.py:1553 -- Started a local Ray instance.
+[2m[36m(pid=2959014)[0m 2024-03-21 05:12:34.268529: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959014)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959026)[0m 2024-03-21 05:12:34.278030: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959026)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959011)[0m 2024-03-21 05:12:34.280948: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959011)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959015)[0m 2024-03-21 05:12:34.223779: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959015)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959004)[0m 2024-03-21 05:12:34.270417: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959004)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959018)[0m 2024-03-21 05:12:34.271036: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959018)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959013)[0m 2024-03-21 05:12:34.265485: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959013)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959019)[0m 2024-03-21 05:12:34.285911: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959019)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959024)[0m 2024-03-21 05:12:34.286477: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959024)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959008)[0m 2024-03-21 05:12:34.334896: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959008)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959023)[0m 2024-03-21 05:12:34.342669: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959023)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959027)[0m 2024-03-21 05:12:34.321065: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959027)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959046)[0m 2024-03-21 05:12:34.340836: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959046)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959006)[0m 2024-03-21 05:12:34.296492: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959006)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959020)[0m 2024-03-21 05:12:34.327074: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959020)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959017)[0m 2024-03-21 05:12:34.307946: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959017)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959036)[0m 2024-03-21 05:12:34.313335: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959036)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959005)[0m 2024-03-21 05:12:34.299272: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959005)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959031)[0m 2024-03-21 05:12:34.323910: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959031)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959028)[0m 2024-03-21 05:12:34.339072: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959028)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959007)[0m 2024-03-21 05:12:34.308634: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959007)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959025)[0m 2024-03-21 05:12:34.303847: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959025)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959022)[0m 2024-03-21 05:12:34.337190: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959022)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959021)[0m 2024-03-21 05:12:34.310676: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959021)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959016)[0m 2024-03-21 05:12:34.335704: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959016)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959050)[0m 2024-03-21 05:12:34.312975: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959050)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959010)[0m 2024-03-21 05:12:34.334027: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959010)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959033)[0m 2024-03-21 05:12:34.334875: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959033)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959037)[0m 2024-03-21 05:12:34.336096: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959037)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959038)[0m 2024-03-21 05:12:34.434528: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959038)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959065)[0m 2024-03-21 05:12:34.437787: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959065)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959035)[0m 2024-03-21 05:12:34.434279: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959035)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959062)[0m 2024-03-21 05:12:34.434635: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959062)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959063)[0m 2024-03-21 05:12:34.434379: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959063)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959048)[0m 2024-03-21 05:12:34.433895: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959048)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959032)[0m 2024-03-21 05:12:34.416397: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959032)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959057)[0m 2024-03-21 05:12:34.415550: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959057)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959064)[0m 2024-03-21 05:12:34.434125: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959064)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959030)[0m 2024-03-21 05:12:34.436480: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959030)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959039)[0m 2024-03-21 05:12:34.434069: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959039)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959061)[0m 2024-03-21 05:12:34.435289: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959061)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959049)[0m 2024-03-21 05:12:34.435649: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959049)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959012)[0m 2024-03-21 05:12:34.419918: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959012)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959034)[0m 2024-03-21 05:12:34.412775: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959034)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959060)[0m 2024-03-21 05:12:34.435453: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959060)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959058)[0m 2024-03-21 05:12:34.437549: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959058)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959009)[0m 2024-03-21 05:12:34.433679: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959009)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959029)[0m 2024-03-21 05:12:34.412779: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959029)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959090)[0m 2024-03-21 05:12:34.434483: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959090)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959059)[0m 2024-03-21 05:12:34.435194: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959059)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959047)[0m 2024-03-21 05:12:34.471084: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2959047)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2959004)[0m 2024-03-21 05:12:34.981930: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959004)[0m 2024-03-21 05:12:34.982060: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959004)[0m 2024-03-21 05:12:34.982077: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959014)[0m 2024-03-21 05:12:35.003206: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959014)[0m 2024-03-21 05:12:35.003328: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959014)[0m 2024-03-21 05:12:35.003345: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959026)[0m 2024-03-21 05:12:35.017514: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959026)[0m 2024-03-21 05:12:35.017602: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959026)[0m 2024-03-21 05:12:35.017611: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959011)[0m 2024-03-21 05:12:35.055132: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959011)[0m 2024-03-21 05:12:35.055215: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959011)[0m 2024-03-21 05:12:35.055225: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959015)[0m 2024-03-21 05:12:35.052473: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959015)[0m 2024-03-21 05:12:35.052596: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959015)[0m 2024-03-21 05:12:35.052611: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959018)[0m 2024-03-21 05:12:35.012370: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959018)[0m 2024-03-21 05:12:35.012472: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959018)[0m 2024-03-21 05:12:35.012483: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959019)[0m 2024-03-21 05:12:35.011566: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959019)[0m 2024-03-21 05:12:35.011664: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959019)[0m 2024-03-21 05:12:35.011675: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959024)[0m 2024-03-21 05:12:35.032875: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959024)[0m 2024-03-21 05:12:35.032973: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959024)[0m 2024-03-21 05:12:35.032983: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959027)[0m 2024-03-21 05:12:35.075543: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959027)[0m 2024-03-21 05:12:35.075639: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959027)[0m 2024-03-21 05:12:35.075650: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959006)[0m 2024-03-21 05:12:35.053022: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959006)[0m 2024-03-21 05:12:35.053136: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959006)[0m 2024-03-21 05:12:35.053151: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959020)[0m 2024-03-21 05:12:35.097229: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959020)[0m 2024-03-21 05:12:35.097998: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959020)[0m 2024-03-21 05:12:35.098010: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959017)[0m 2024-03-21 05:12:35.036851: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959017)[0m 2024-03-21 05:12:35.036934: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959017)[0m 2024-03-21 05:12:35.036942: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959036)[0m 2024-03-21 05:12:35.050667: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959036)[0m 2024-03-21 05:12:35.050753: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959036)[0m 2024-03-21 05:12:35.050763: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959005)[0m 2024-03-21 05:12:35.084084: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959005)[0m 2024-03-21 05:12:35.084193: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959005)[0m 2024-03-21 05:12:35.084204: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959031)[0m 2024-03-21 05:12:35.114085: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959031)[0m 2024-03-21 05:12:35.114172: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959031)[0m 2024-03-21 05:12:35.114179: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959028)[0m 2024-03-21 05:12:35.060936: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959028)[0m 2024-03-21 05:12:35.061011: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959028)[0m 2024-03-21 05:12:35.061019: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959007)[0m 2024-03-21 05:12:35.081695: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959007)[0m 2024-03-21 05:12:35.081817: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959007)[0m 2024-03-21 05:12:35.081832: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959025)[0m 2024-03-21 05:12:35.097432: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959025)[0m 2024-03-21 05:12:35.097526: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959025)[0m 2024-03-21 05:12:35.097535: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959021)[0m 2024-03-21 05:12:35.085713: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959021)[0m 2024-03-21 05:12:35.085812: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959021)[0m 2024-03-21 05:12:35.085822: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959016)[0m 2024-03-21 05:12:35.060487: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959016)[0m 2024-03-21 05:12:35.061508: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959016)[0m 2024-03-21 05:12:35.061519: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959050)[0m 2024-03-21 05:12:35.067941: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959050)[0m 2024-03-21 05:12:35.068068: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959050)[0m 2024-03-21 05:12:35.068082: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959010)[0m 2024-03-21 05:12:35.092895: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959010)[0m 2024-03-21 05:12:35.092985: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959010)[0m 2024-03-21 05:12:35.092993: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959033)[0m 2024-03-21 05:12:35.121563: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959033)[0m 2024-03-21 05:12:35.121628: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959033)[0m 2024-03-21 05:12:35.121634: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959037)[0m 2024-03-21 05:12:35.086465: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959037)[0m 2024-03-21 05:12:35.086604: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959037)[0m 2024-03-21 05:12:35.086622: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959008)[0m 2024-03-21 05:12:35.122209: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959008)[0m 2024-03-21 05:12:35.122338: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959008)[0m 2024-03-21 05:12:35.122353: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959046)[0m 2024-03-21 05:12:35.115478: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959046)[0m 2024-03-21 05:12:35.115558: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959046)[0m 2024-03-21 05:12:35.115567: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959013)[0m 2024-03-21 05:12:35.207346: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959013)[0m 2024-03-21 05:12:35.207461: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959013)[0m 2024-03-21 05:12:35.207474: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959023)[0m 2024-03-21 05:12:35.164481: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959023)[0m 2024-03-21 05:12:35.164580: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959023)[0m 2024-03-21 05:12:35.164591: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959022)[0m 2024-03-21 05:12:35.134898: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959022)[0m 2024-03-21 05:12:35.135003: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959022)[0m 2024-03-21 05:12:35.135014: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959038)[0m 2024-03-21 05:12:35.214183: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959038)[0m 2024-03-21 05:12:35.214241: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959038)[0m 2024-03-21 05:12:35.214247: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959065)[0m 2024-03-21 05:12:35.175482: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959065)[0m 2024-03-21 05:12:35.175539: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959065)[0m 2024-03-21 05:12:35.175544: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959062)[0m 2024-03-21 05:12:35.180954: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959062)[0m 2024-03-21 05:12:35.181010: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959062)[0m 2024-03-21 05:12:35.181016: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959063)[0m 2024-03-21 05:12:35.157748: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959063)[0m 2024-03-21 05:12:35.157830: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959063)[0m 2024-03-21 05:12:35.157838: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959032)[0m 2024-03-21 05:12:35.208590: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959032)[0m 2024-03-21 05:12:35.208661: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959032)[0m 2024-03-21 05:12:35.208669: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959057)[0m 2024-03-21 05:12:35.167393: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959057)[0m 2024-03-21 05:12:35.167489: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959057)[0m 2024-03-21 05:12:35.167499: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959061)[0m 2024-03-21 05:12:35.229719: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959061)[0m 2024-03-21 05:12:35.230492: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959061)[0m 2024-03-21 05:12:35.230509: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959049)[0m 2024-03-21 05:12:35.184560: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959049)[0m 2024-03-21 05:12:35.184631: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959049)[0m 2024-03-21 05:12:35.184638: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959012)[0m 2024-03-21 05:12:35.222749: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959012)[0m 2024-03-21 05:12:35.222852: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959012)[0m 2024-03-21 05:12:35.222863: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959034)[0m 2024-03-21 05:12:35.181331: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959034)[0m 2024-03-21 05:12:35.181421: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959034)[0m 2024-03-21 05:12:35.181432: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959009)[0m 2024-03-21 05:12:35.179988: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959009)[0m 2024-03-21 05:12:35.180097: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959009)[0m 2024-03-21 05:12:35.180109: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959029)[0m 2024-03-21 05:12:35.234914: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959029)[0m 2024-03-21 05:12:35.235029: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959029)[0m 2024-03-21 05:12:35.235044: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959090)[0m 2024-03-21 05:12:35.215020: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959090)[0m 2024-03-21 05:12:35.215084: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959090)[0m 2024-03-21 05:12:35.215090: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959059)[0m 2024-03-21 05:12:35.191041: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959059)[0m 2024-03-21 05:12:35.191136: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959059)[0m 2024-03-21 05:12:35.191146: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959035)[0m 2024-03-21 05:12:35.287625: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959035)[0m 2024-03-21 05:12:35.288358: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959035)[0m 2024-03-21 05:12:35.288373: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959048)[0m 2024-03-21 05:12:35.240232: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959048)[0m 2024-03-21 05:12:35.240329: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959048)[0m 2024-03-21 05:12:35.240339: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959064)[0m 2024-03-21 05:12:35.253983: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959064)[0m 2024-03-21 05:12:35.254665: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959064)[0m 2024-03-21 05:12:35.254680: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959030)[0m 2024-03-21 05:12:35.256232: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959030)[0m 2024-03-21 05:12:35.256780: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959030)[0m 2024-03-21 05:12:35.256794: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959039)[0m 2024-03-21 05:12:35.244012: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959039)[0m 2024-03-21 05:12:35.244135: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959039)[0m 2024-03-21 05:12:35.244150: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959060)[0m 2024-03-21 05:12:35.339547: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959060)[0m 2024-03-21 05:12:35.339648: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959060)[0m 2024-03-21 05:12:35.339661: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959058)[0m 2024-03-21 05:12:35.258358: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959058)[0m 2024-03-21 05:12:35.258464: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959058)[0m 2024-03-21 05:12:35.258477: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(pid=2959047)[0m 2024-03-21 05:12:35.270000: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959047)[0m 2024-03-21 05:12:35.270075: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2959047)[0m 2024-03-21 05:12:35.270082: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(Actor pid=2959011)[0m 2024-03-21 05:12:35.648470: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959011)[0m 2024-03-21 05:12:35.648503: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959011)[0m 2024-03-21 05:12:35.648509: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959011)[0m 2024-03-21 05:12:35.648606: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959011)[0m 2024-03-21 05:12:35.648622: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959011)[0m 2024-03-21 05:12:35.648626: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959011)[0m 2024-03-21 05:12:35.654006: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959011)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959017)[0m 2024-03-21 05:12:35.650850: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959017)[0m 2024-03-21 05:12:35.650886: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959017)[0m 2024-03-21 05:12:35.650891: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959017)[0m 2024-03-21 05:12:35.650992: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959017)[0m 2024-03-21 05:12:35.651008: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959017)[0m 2024-03-21 05:12:35.651012: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959017)[0m 2024-03-21 05:12:35.656349: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959017)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959023)[0m 2024-03-21 05:12:35.746068: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959023)[0m 2024-03-21 05:12:35.746103: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959023)[0m 2024-03-21 05:12:35.746107: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959023)[0m 2024-03-21 05:12:35.746189: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959023)[0m 2024-03-21 05:12:35.746205: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959023)[0m 2024-03-21 05:12:35.746209: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959023)[0m 2024-03-21 05:12:35.751210: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959023)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959006)[0m 2024-03-21 05:12:35.714885: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959006)[0m 2024-03-21 05:12:35.714918: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959006)[0m 2024-03-21 05:12:35.714923: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959006)[0m 2024-03-21 05:12:35.715045: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959006)[0m 2024-03-21 05:12:35.715063: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959006)[0m 2024-03-21 05:12:35.715067: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959006)[0m 2024-03-21 05:12:35.720934: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959006)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959020)[0m 2024-03-21 05:12:35.729980: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959020)[0m 2024-03-21 05:12:35.730011: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959020)[0m 2024-03-21 05:12:35.730016: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959020)[0m 2024-03-21 05:12:35.730108: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959020)[0m 2024-03-21 05:12:35.730125: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959020)[0m 2024-03-21 05:12:35.730129: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959020)[0m 2024-03-21 05:12:35.735408: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959020)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959033)[0m 2024-03-21 05:12:35.694657: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959033)[0m 2024-03-21 05:12:35.694686: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959033)[0m 2024-03-21 05:12:35.694691: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959033)[0m 2024-03-21 05:12:35.694767: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959033)[0m 2024-03-21 05:12:35.694782: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959033)[0m 2024-03-21 05:12:35.694785: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959033)[0m 2024-03-21 05:12:35.699697: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959033)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959049)[0m 2024-03-21 05:12:35.762327: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959049)[0m 2024-03-21 05:12:35.762362: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959049)[0m 2024-03-21 05:12:35.762367: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959049)[0m 2024-03-21 05:12:35.762451: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959049)[0m 2024-03-21 05:12:35.762468: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959049)[0m 2024-03-21 05:12:35.762472: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959049)[0m 2024-03-21 05:12:35.767641: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959049)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959026)[0m 2024-03-21 05:12:35.839837: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959026)[0m 2024-03-21 05:12:35.839867: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959026)[0m 2024-03-21 05:12:35.839875: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959026)[0m 2024-03-21 05:12:35.839963: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959026)[0m 2024-03-21 05:12:35.839988: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959026)[0m 2024-03-21 05:12:35.839997: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959026)[0m 2024-03-21 05:12:35.846461: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959026)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959004)[0m 2024-03-21 05:12:35.820090: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959004)[0m 2024-03-21 05:12:35.820136: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959004)[0m 2024-03-21 05:12:35.820144: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959004)[0m 2024-03-21 05:12:35.820248: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959004)[0m 2024-03-21 05:12:35.820269: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959004)[0m 2024-03-21 05:12:35.820275: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959004)[0m 2024-03-21 05:12:35.826789: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959004)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959024)[0m 2024-03-21 05:12:35.831963: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959024)[0m 2024-03-21 05:12:35.831987: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959024)[0m 2024-03-21 05:12:35.831991: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959024)[0m 2024-03-21 05:12:35.832053: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959024)[0m 2024-03-21 05:12:35.832067: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959024)[0m 2024-03-21 05:12:35.832071: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959024)[0m 2024-03-21 05:12:35.836720: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959024)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959036)[0m 2024-03-21 05:12:35.807090: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959036)[0m 2024-03-21 05:12:35.807121: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959036)[0m 2024-03-21 05:12:35.807126: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959036)[0m 2024-03-21 05:12:35.807236: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959036)[0m 2024-03-21 05:12:35.807252: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959036)[0m 2024-03-21 05:12:35.807255: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959036)[0m 2024-03-21 05:12:35.813124: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959036)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959016)[0m 2024-03-21 05:12:35.874218: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959016)[0m 2024-03-21 05:12:35.874254: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959016)[0m 2024-03-21 05:12:35.874261: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959016)[0m 2024-03-21 05:12:35.874334: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959016)[0m 2024-03-21 05:12:35.874354: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959016)[0m 2024-03-21 05:12:35.874359: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959038)[0m 2024-03-21 05:12:35.827895: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959038)[0m 2024-03-21 05:12:35.827925: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959038)[0m 2024-03-21 05:12:35.827932: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959038)[0m 2024-03-21 05:12:35.828022: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959038)[0m 2024-03-21 05:12:35.828043: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959038)[0m 2024-03-21 05:12:35.828049: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959038)[0m 2024-03-21 05:12:35.834282: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959038)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959065)[0m 2024-03-21 05:12:35.782907: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959065)[0m 2024-03-21 05:12:35.782942: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959065)[0m 2024-03-21 05:12:35.782947: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959065)[0m 2024-03-21 05:12:35.783068: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959065)[0m 2024-03-21 05:12:35.783087: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959065)[0m 2024-03-21 05:12:35.783091: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959065)[0m 2024-03-21 05:12:35.788402: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959065)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959062)[0m 2024-03-21 05:12:35.780251: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959062)[0m 2024-03-21 05:12:35.780293: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959062)[0m 2024-03-21 05:12:35.780300: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959062)[0m 2024-03-21 05:12:35.780408: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959062)[0m 2024-03-21 05:12:35.780435: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959062)[0m 2024-03-21 05:12:35.780442: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959062)[0m 2024-03-21 05:12:35.787541: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959062)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:35.839489: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:35.873726: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:35.873968: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:35.877623: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Learner pid=2959090)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959014)[0m 2024-03-21 05:12:35.876702: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959014)[0m 2024-03-21 05:12:35.876734: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959014)[0m 2024-03-21 05:12:35.876741: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959014)[0m 2024-03-21 05:12:35.876822: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959014)[0m 2024-03-21 05:12:35.876845: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959014)[0m 2024-03-21 05:12:35.876851: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959018)[0m 2024-03-21 05:12:35.877219: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959018)[0m 2024-03-21 05:12:35.877242: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959018)[0m 2024-03-21 05:12:35.877249: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959018)[0m 2024-03-21 05:12:35.877318: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959018)[0m 2024-03-21 05:12:35.877338: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959018)[0m 2024-03-21 05:12:35.877345: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959016)[0m 2024-03-21 05:12:35.880495: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959016)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:35.879566: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:35.879792: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:35.879936: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Actor pid=2959014)[0m 2024-03-21 05:12:35.883194: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959014)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959015)[0m 2024-03-21 05:12:35.904436: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959015)[0m 2024-03-21 05:12:35.904466: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959015)[0m 2024-03-21 05:12:35.904474: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959015)[0m 2024-03-21 05:12:35.904596: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959015)[0m 2024-03-21 05:12:35.904620: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959015)[0m 2024-03-21 05:12:35.904626: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959015)[0m 2024-03-21 05:12:35.912111: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959015)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959018)[0m 2024-03-21 05:12:35.883424: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959018)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959013)[0m 2024-03-21 05:12:35.967022: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959013)[0m 2024-03-21 05:12:35.967048: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959013)[0m 2024-03-21 05:12:35.967052: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959013)[0m 2024-03-21 05:12:35.967111: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959013)[0m 2024-03-21 05:12:35.967125: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959013)[0m 2024-03-21 05:12:35.967129: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959013)[0m 2024-03-21 05:12:35.971449: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959013)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959019)[0m 2024-03-21 05:12:35.904946: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959019)[0m 2024-03-21 05:12:35.904994: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959019)[0m 2024-03-21 05:12:35.905004: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959019)[0m 2024-03-21 05:12:35.905149: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959019)[0m 2024-03-21 05:12:35.905183: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959019)[0m 2024-03-21 05:12:35.905192: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959019)[0m 2024-03-21 05:12:35.912782: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959019)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959027)[0m 2024-03-21 05:12:35.914789: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959027)[0m 2024-03-21 05:12:35.914818: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959027)[0m 2024-03-21 05:12:35.914823: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959027)[0m 2024-03-21 05:12:35.914921: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959027)[0m 2024-03-21 05:12:35.914940: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959027)[0m 2024-03-21 05:12:35.914944: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959027)[0m 2024-03-21 05:12:35.920556: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959027)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959046)[0m 2024-03-21 05:12:35.899143: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959046)[0m 2024-03-21 05:12:35.899179: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959046)[0m 2024-03-21 05:12:35.899186: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959046)[0m 2024-03-21 05:12:35.899309: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959046)[0m 2024-03-21 05:12:35.899329: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959046)[0m 2024-03-21 05:12:35.899333: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959046)[0m 2024-03-21 05:12:35.904108: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959046)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959005)[0m 2024-03-21 05:12:35.911784: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959005)[0m 2024-03-21 05:12:35.911817: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959005)[0m 2024-03-21 05:12:35.911823: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959005)[0m 2024-03-21 05:12:35.911912: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959005)[0m 2024-03-21 05:12:35.911929: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959005)[0m 2024-03-21 05:12:35.911933: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959005)[0m 2024-03-21 05:12:35.916987: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959005)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959031)[0m 2024-03-21 05:12:35.945441: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959031)[0m 2024-03-21 05:12:35.945467: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959031)[0m 2024-03-21 05:12:35.945474: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959031)[0m 2024-03-21 05:12:35.945550: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959031)[0m 2024-03-21 05:12:35.945573: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959031)[0m 2024-03-21 05:12:35.945581: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959031)[0m 2024-03-21 05:12:35.951463: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959031)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959028)[0m 2024-03-21 05:12:35.903579: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959028)[0m 2024-03-21 05:12:35.903607: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959028)[0m 2024-03-21 05:12:35.903614: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959028)[0m 2024-03-21 05:12:35.903746: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959028)[0m 2024-03-21 05:12:35.903770: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959028)[0m 2024-03-21 05:12:35.903776: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959028)[0m 2024-03-21 05:12:35.908657: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959028)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959007)[0m 2024-03-21 05:12:35.906036: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959007)[0m 2024-03-21 05:12:35.906063: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959007)[0m 2024-03-21 05:12:35.906069: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959007)[0m 2024-03-21 05:12:35.906169: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959007)[0m 2024-03-21 05:12:35.906190: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959007)[0m 2024-03-21 05:12:35.906195: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959007)[0m 2024-03-21 05:12:35.912758: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959007)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959025)[0m 2024-03-21 05:12:35.913485: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959025)[0m 2024-03-21 05:12:35.913515: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959025)[0m 2024-03-21 05:12:35.913521: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959025)[0m 2024-03-21 05:12:35.913655: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959025)[0m 2024-03-21 05:12:35.913677: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959025)[0m 2024-03-21 05:12:35.913681: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959025)[0m 2024-03-21 05:12:35.918939: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959025)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959022)[0m 2024-03-21 05:12:35.947757: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959022)[0m 2024-03-21 05:12:35.947787: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959022)[0m 2024-03-21 05:12:35.947795: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959022)[0m 2024-03-21 05:12:35.947881: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959022)[0m 2024-03-21 05:12:35.947904: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959022)[0m 2024-03-21 05:12:35.947910: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959022)[0m 2024-03-21 05:12:35.954439: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959022)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959021)[0m 2024-03-21 05:12:35.935244: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959021)[0m 2024-03-21 05:12:35.935285: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959021)[0m 2024-03-21 05:12:35.935293: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959021)[0m 2024-03-21 05:12:35.935428: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959021)[0m 2024-03-21 05:12:35.935453: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959021)[0m 2024-03-21 05:12:35.935459: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959021)[0m 2024-03-21 05:12:35.942163: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959021)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959050)[0m 2024-03-21 05:12:35.906439: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959050)[0m 2024-03-21 05:12:35.906469: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959050)[0m 2024-03-21 05:12:35.906476: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959050)[0m 2024-03-21 05:12:35.906601: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959050)[0m 2024-03-21 05:12:35.906628: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959050)[0m 2024-03-21 05:12:35.906636: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959050)[0m 2024-03-21 05:12:35.912661: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959050)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959010)[0m 2024-03-21 05:12:35.903209: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959010)[0m 2024-03-21 05:12:35.903242: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959010)[0m 2024-03-21 05:12:35.903249: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959010)[0m 2024-03-21 05:12:35.903376: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959010)[0m 2024-03-21 05:12:35.903404: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959010)[0m 2024-03-21 05:12:35.903412: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959010)[0m 2024-03-21 05:12:35.909856: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959010)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959037)[0m 2024-03-21 05:12:35.901619: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959037)[0m 2024-03-21 05:12:35.901649: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959037)[0m 2024-03-21 05:12:35.901654: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959037)[0m 2024-03-21 05:12:35.901768: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959037)[0m 2024-03-21 05:12:35.901784: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959037)[0m 2024-03-21 05:12:35.901788: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959037)[0m 2024-03-21 05:12:35.906639: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959037)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959063)[0m 2024-03-21 05:12:35.957697: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959063)[0m 2024-03-21 05:12:35.957738: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959063)[0m 2024-03-21 05:12:35.957746: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959063)[0m 2024-03-21 05:12:35.957822: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959063)[0m 2024-03-21 05:12:35.957843: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959063)[0m 2024-03-21 05:12:35.957848: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959063)[0m 2024-03-21 05:12:35.964098: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959063)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959057)[0m 2024-03-21 05:12:35.944072: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959057)[0m 2024-03-21 05:12:35.944096: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959057)[0m 2024-03-21 05:12:35.944101: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959057)[0m 2024-03-21 05:12:35.944170: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959057)[0m 2024-03-21 05:12:35.944184: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959057)[0m 2024-03-21 05:12:35.944188: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959057)[0m 2024-03-21 05:12:35.948882: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959057)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959061)[0m 2024-03-21 05:12:35.979973: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959061)[0m 2024-03-21 05:12:35.980005: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959061)[0m 2024-03-21 05:12:35.980012: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959061)[0m 2024-03-21 05:12:35.980087: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959061)[0m 2024-03-21 05:12:35.980109: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959061)[0m 2024-03-21 05:12:35.980116: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959061)[0m 2024-03-21 05:12:35.985126: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959061)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959008)[0m 2024-03-21 05:12:35.989191: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959008)[0m 2024-03-21 05:12:35.989229: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959008)[0m 2024-03-21 05:12:35.989238: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959008)[0m 2024-03-21 05:12:35.989349: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959008)[0m 2024-03-21 05:12:35.989374: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959008)[0m 2024-03-21 05:12:35.989380: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959048)[0m 2024-03-21 05:12:35.991103: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959048)[0m 2024-03-21 05:12:35.991131: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959048)[0m 2024-03-21 05:12:35.991137: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959048)[0m 2024-03-21 05:12:35.991216: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959048)[0m 2024-03-21 05:12:35.991235: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959048)[0m 2024-03-21 05:12:35.991240: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959032)[0m 2024-03-21 05:12:35.991347: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959032)[0m 2024-03-21 05:12:35.991367: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959032)[0m 2024-03-21 05:12:35.991371: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959032)[0m 2024-03-21 05:12:35.991438: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959032)[0m 2024-03-21 05:12:35.991452: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959032)[0m 2024-03-21 05:12:35.991455: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959059)[0m 2024-03-21 05:12:35.992807: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959059)[0m 2024-03-21 05:12:35.992830: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959059)[0m 2024-03-21 05:12:35.992835: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959059)[0m 2024-03-21 05:12:35.992910: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959059)[0m 2024-03-21 05:12:35.992924: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959059)[0m 2024-03-21 05:12:35.992928: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959008)[0m 2024-03-21 05:12:35.996698: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959008)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959035)[0m 2024-03-21 05:12:36.035465: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959035)[0m 2024-03-21 05:12:36.035486: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959035)[0m 2024-03-21 05:12:36.035491: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959035)[0m 2024-03-21 05:12:36.035568: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959035)[0m 2024-03-21 05:12:36.035582: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959035)[0m 2024-03-21 05:12:36.035585: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959035)[0m 2024-03-21 05:12:36.040309: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959035)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959048)[0m 2024-03-21 05:12:35.997323: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959048)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959032)[0m 2024-03-21 05:12:35.995903: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959032)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959064)[0m 2024-03-21 05:12:36.027826: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959064)[0m 2024-03-21 05:12:36.027848: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959064)[0m 2024-03-21 05:12:36.027853: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959064)[0m 2024-03-21 05:12:36.027928: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959064)[0m 2024-03-21 05:12:36.027942: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959064)[0m 2024-03-21 05:12:36.027945: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959064)[0m 2024-03-21 05:12:36.032589: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959064)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959030)[0m 2024-03-21 05:12:36.099218: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959030)[0m 2024-03-21 05:12:36.099245: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959030)[0m 2024-03-21 05:12:36.099253: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959030)[0m 2024-03-21 05:12:36.099328: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959030)[0m 2024-03-21 05:12:36.099346: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959030)[0m 2024-03-21 05:12:36.099351: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959039)[0m 2024-03-21 05:12:36.099112: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959039)[0m 2024-03-21 05:12:36.099137: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959039)[0m 2024-03-21 05:12:36.099142: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959039)[0m 2024-03-21 05:12:36.099218: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959039)[0m 2024-03-21 05:12:36.099233: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959039)[0m 2024-03-21 05:12:36.099236: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959012)[0m 2024-03-21 05:12:36.020718: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959012)[0m 2024-03-21 05:12:36.020746: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959012)[0m 2024-03-21 05:12:36.020751: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959012)[0m 2024-03-21 05:12:36.020832: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959012)[0m 2024-03-21 05:12:36.020857: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959012)[0m 2024-03-21 05:12:36.020865: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959012)[0m 2024-03-21 05:12:36.027385: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959012)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959034)[0m 2024-03-21 05:12:35.997496: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959034)[0m 2024-03-21 05:12:35.997527: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959034)[0m 2024-03-21 05:12:35.997536: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959034)[0m 2024-03-21 05:12:35.997620: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959034)[0m 2024-03-21 05:12:35.997647: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959034)[0m 2024-03-21 05:12:35.997655: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959034)[0m 2024-03-21 05:12:36.003760: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959034)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959058)[0m 2024-03-21 05:12:36.036114: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959058)[0m 2024-03-21 05:12:36.036134: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959058)[0m 2024-03-21 05:12:36.036139: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959058)[0m 2024-03-21 05:12:36.036196: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959058)[0m 2024-03-21 05:12:36.036210: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959058)[0m 2024-03-21 05:12:36.036213: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959058)[0m 2024-03-21 05:12:36.040342: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959058)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959009)[0m 2024-03-21 05:12:36.023291: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959009)[0m 2024-03-21 05:12:36.023328: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959009)[0m 2024-03-21 05:12:36.023337: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959009)[0m 2024-03-21 05:12:36.023416: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959009)[0m 2024-03-21 05:12:36.023440: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959009)[0m 2024-03-21 05:12:36.023448: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959009)[0m 2024-03-21 05:12:36.030282: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959009)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959029)[0m 2024-03-21 05:12:36.030195: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959029)[0m 2024-03-21 05:12:36.030220: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959029)[0m 2024-03-21 05:12:36.030225: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959029)[0m 2024-03-21 05:12:36.030296: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959029)[0m 2024-03-21 05:12:36.030312: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959029)[0m 2024-03-21 05:12:36.030315: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959029)[0m 2024-03-21 05:12:36.034950: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959029)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959059)[0m 2024-03-21 05:12:35.997703: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959059)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959047)[0m 2024-03-21 05:12:36.070165: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959047)[0m 2024-03-21 05:12:36.070188: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959047)[0m 2024-03-21 05:12:36.070193: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959047)[0m 2024-03-21 05:12:36.070260: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959047)[0m 2024-03-21 05:12:36.070274: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959047)[0m 2024-03-21 05:12:36.070278: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959047)[0m 2024-03-21 05:12:36.074511: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959047)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959030)[0m 2024-03-21 05:12:36.105588: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959030)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959039)[0m 2024-03-21 05:12:36.103931: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959039)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Actor pid=2959060)[0m 2024-03-21 05:12:36.113125: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Actor pid=2959060)[0m 2024-03-21 05:12:36.113145: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Actor pid=2959060)[0m 2024-03-21 05:12:36.113149: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Actor pid=2959060)[0m 2024-03-21 05:12:36.113203: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Actor pid=2959060)[0m 2024-03-21 05:12:36.113217: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Actor pid=2959060)[0m 2024-03-21 05:12:36.113221: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Actor pid=2959060)[0m 2024-03-21 05:12:36.117308: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Actor pid=2959060)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:36.277702: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:36.277843: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:36.277934: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:36.278016: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1613] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 10067 MB memory:  -> device: 0, name: NVIDIA GeForce RTX 3080 Ti, pci bus id: 0000:01:00.0, compute capability: 8.6
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:36.891606: I tensorflow/compiler/xla/stream_executor/cuda/cuda_blas.cc:630] TensorFloat-32 will be used for the matrix multiplication. This will only be logged once.
+[2m[36m(pid=2974604)[0m 2024-03-21 05:12:37.326079: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(pid=2974604)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(pid=2974604)[0m 2024-03-21 05:12:38.041516: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2974604)[0m 2024-03-21 05:12:38.041597: W tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: ”/usr/local/cuda-11.8/targets/x86_64-linux/lib:”
+[2m[36m(pid=2974604)[0m 2024-03-21 05:12:38.041605: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:38.680678: I tensorflow/compiler/xla/service/service.cc:173] XLA service 0x55a0d27fbed0 initialized for platform CUDA (this does not guarantee that XLA will be used). Devices:
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:38.680706: I tensorflow/compiler/xla/service/service.cc:181]   StreamExecutor device (0): NVIDIA GeForce RTX 3080 Ti, Compute Capability 8.6
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:38.684205: I tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.cc:268] disabling MLIR crash reproducer, set env var `MLIR_CRASH_REPRODUCER_DIRECTORY` to enable.
+[2m[36m(Learner pid=2959090)[0m 2024-03-21 05:12:38.768182: I tensorflow/compiler/jit/xla_compilation_cache.cc:477] Compiled cluster using XLA!  This line is logged at most once for the lifetime of the process.
+[2m[36m(Tester pid=2974604)[0m 2024-03-21 05:12:39.024002: E tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.cc:267] failed call to cuInit: CUDA_ERROR_NO_DEVICE: no CUDA-capable device is detected
+[2m[36m(Tester pid=2974604)[0m 2024-03-21 05:12:39.024040: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:169] retrieving CUDA diagnostic information for host: thripper-ws
+[2m[36m(Tester pid=2974604)[0m 2024-03-21 05:12:39.024049: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:176] hostname: thripper-ws
+[2m[36m(Tester pid=2974604)[0m 2024-03-21 05:12:39.024133: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:200] libcuda reported version is: 530.30.2
+[2m[36m(Tester pid=2974604)[0m 2024-03-21 05:12:39.024160: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:204] kernel reported version is: 530.30.2
+[2m[36m(Tester pid=2974604)[0m 2024-03-21 05:12:39.024169: I tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.cc:310] kernel version seems to match DSO: 530.30.2
+[2m[36m(Tester pid=2974604)[0m 2024-03-21 05:12:39.027086: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+[2m[36m(Tester pid=2974604)[0m To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[2m[36m(Learner pid=2959090)[0m WARNING:tensorflow:5 out of the last 5 calls to <function _BaseOptimizer._update_step_xla at 0x7faa6d6c9d80> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+[2m[36m(Learner pid=2959090)[0m WARNING:tensorflow:6 out of the last 6 calls to <function _BaseOptimizer._update_step_xla at 0x7faa6d6c9d80> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+learner 2.9511606693267822, update_cycles: 2, beta: 0.40003
+learner 1.9047043323516846, update_cycles: 3, beta: 0.40005999999999997
+learner 2.1510729789733887, update_cycles: 4, beta: 0.40008999999999995
+learner 1.982670783996582, update_cycles: 5, beta: 0.4001199999999999
+learner 2.0680580139160156, update_cycles: 6, beta: 0.4001499999999999
+learner 2.4669506549835205, update_cycles: 7, beta: 0.40017999999999987
+learner 1.8799011707305908, update_cycles: 8, beta: 0.40020999999999984
+learner 2.5138638019561768, update_cycles: 9, beta: 0.4002399999999998
+learner 2.078904867172241, update_cycles: 10, beta: 0.4002699999999998
+learner 2.1015148162841797, update_cycles: 11, beta: 0.40029999999999977
+learner 1.8918697834014893, update_cycles: 12, beta: 0.40032999999999974
+learner 2.0750234127044678, update_cycles: 13, beta: 0.4003599999999997
+learner 2.6397852897644043, update_cycles: 14, beta: 0.4003899999999997
+learner 2.42722225189209, update_cycles: 15, beta: 0.40041999999999967
+learner 2.0118961334228516, update_cycles: 16, beta: 0.40044999999999964
+learner 2.1973330974578857, update_cycles: 17, beta: 0.4004799999999996
+learner 2.091317892074585, update_cycles: 18, beta: 0.4005099999999996
+learner 2.47225284576416, update_cycles: 19, beta: 0.40053999999999956
+learner 2.710275173187256, update_cycles: 20, beta: 0.40056999999999954
+learner 2.475975275039673, update_cycles: 21, beta: 0.4005999999999995
+learner 2.730602979660034, update_cycles: 22, beta: 0.4006299999999995
+learner 2.822659730911255, update_cycles: 23, beta: 0.40065999999999946
+learner 2.591973066329956, update_cycles: 24, beta: 0.40068999999999944
+learner 2.6420376300811768, update_cycles: 25, beta: 0.4007199999999994
+learner 2.526620626449585, update_cycles: 26, beta: 0.4007499999999994
+learner 2.434659242630005, update_cycles: 27, beta: 0.40077999999999936
+learner 2.4833781719207764, update_cycles: 28, beta: 0.40080999999999933
+learner 2.868152379989624, update_cycles: 29, beta: 0.4008399999999993
+learner 2.3762505054473877, update_cycles: 30, beta: 0.4008699999999993
+learner 3.309321165084839, update_cycles: 31, beta: 0.40089999999999926
+learner 2.9335832595825195, update_cycles: 32, beta: 0.40092999999999923
+learner 2.902416706085205, update_cycles: 33, beta: 0.4009599999999992
+learner 2.5632705688476562, update_cycles: 34, beta: 0.4009899999999992
+learner 2.7845003604888916, update_cycles: 35, beta: 0.40101999999999915
+learner 2.3155159950256348, update_cycles: 36, beta: 0.40104999999999913
+learner 2.786046028137207, update_cycles: 37, beta: 0.4010799999999991
+learner 2.4151737689971924, update_cycles: 38, beta: 0.4011099999999991
+learner 3.035827159881592, update_cycles: 39, beta: 0.40113999999999905
+learner 2.9427497386932373, update_cycles: 40, beta: 0.401169999999999
+learner 2.5755698680877686, update_cycles: 41, beta: 0.401199999999999
+learner 2.699939489364624, update_cycles: 42, beta: 0.401229999999999
+learner 2.9607818126678467, update_cycles: 43, beta: 0.40125999999999895
+learner 3.0395495891571045, update_cycles: 44, beta: 0.4012899999999989
+learner 2.934321880340576, update_cycles: 45, beta: 0.4013199999999989
+learner 2.8575820922851562, update_cycles: 46, beta: 0.4013499999999989
+learner 2.7999210357666016, update_cycles: 47, beta: 0.40137999999999885
+learner 3.789771556854248, update_cycles: 48, beta: 0.4014099999999988
+learner 2.8035449981689453, update_cycles: 49, beta: 0.4014399999999988
+learner 2.9689998626708984, update_cycles: 50, beta: 0.4014699999999988
+0 -669.0583545206097 0.4014699999999988
+learner 2.935030460357666, update_cycles: 51, beta: 0.40149999999999875
+learner 2.469250440597534, update_cycles: 52, beta: 0.4015299999999987
+learner 2.974841594696045, update_cycles: 53, beta: 0.4015599999999987
+learner 2.6976706981658936, update_cycles: 54, beta: 0.40158999999999867
+learner 3.2803966999053955, update_cycles: 55, beta: 0.40161999999999864
+learner 3.177232027053833, update_cycles: 56, beta: 0.4016499999999986
+learner 2.6825222969055176, update_cycles: 57, beta: 0.4016799999999986
+learner 2.9232728481292725, update_cycles: 58, beta: 0.40170999999999857
+learner 3.010561227798462, update_cycles: 59, beta: 0.40173999999999854
+learner 2.951383590698242, update_cycles: 60, beta: 0.4017699999999985
+learner 3.139894723892212, update_cycles: 61, beta: 0.4017999999999985
+learner 2.6809215545654297, update_cycles: 62, beta: 0.40182999999999847
+learner 2.5489962100982666, update_cycles: 63, beta: 0.40185999999999844
+learner 2.889770030975342, update_cycles: 64, beta: 0.4018899999999984
+learner 2.335306406021118, update_cycles: 65, beta: 0.4019199999999984
+learner 2.862797260284424, update_cycles: 66, beta: 0.40194999999999836
+learner 2.721524238586426, update_cycles: 67, beta: 0.40197999999999834
+learner 3.104172945022583, update_cycles: 68, beta: 0.4020099999999983
+learner 2.668365240097046, update_cycles: 69, beta: 0.4020399999999983
+learner 3.7903056144714355, update_cycles: 70, beta: 0.40206999999999826
+learner 2.6695363521575928, update_cycles: 71, beta: 0.40209999999999824
+learner 2.934016227722168, update_cycles: 72, beta: 0.4021299999999982
+learner 2.9898788928985596, update_cycles: 73, beta: 0.4021599999999982
+learner 2.653862714767456, update_cycles: 74, beta: 0.40218999999999816
+learner 2.7154135704040527, update_cycles: 75, beta: 0.40221999999999813
+learner 2.979316473007202, update_cycles: 76, beta: 0.4022499999999981
+learner 2.5377402305603027, update_cycles: 77, beta: 0.4022799999999981
+learner 3.772209405899048, update_cycles: 78, beta: 0.40230999999999806
+learner 2.9982571601867676, update_cycles: 79, beta: 0.40233999999999803
+learner 2.6623787879943848, update_cycles: 80, beta: 0.402369999999998
+learner 2.7920432090759277, update_cycles: 81, beta: 0.402399999999998
+learner 2.9894373416900635, update_cycles: 82, beta: 0.40242999999999796
+learner 2.657383680343628, update_cycles: 83, beta: 0.40245999999999793
+learner 2.7275612354278564, update_cycles: 84, beta: 0.4024899999999979
+learner 2.869971513748169, update_cycles: 85, beta: 0.4025199999999979
+learner 3.79356050491333, update_cycles: 86, beta: 0.40254999999999785
+learner 2.3549435138702393, update_cycles: 87, beta: 0.40257999999999783
+learner 3.141145706176758, update_cycles: 88, beta: 0.4026099999999978
+learner 2.337045669555664, update_cycles: 89, beta: 0.4026399999999978
+learner 3.111905574798584, update_cycles: 90, beta: 0.40266999999999775
+learner 2.662806749343872, update_cycles: 91, beta: 0.4026999999999977
+learner 2.8386287689208984, update_cycles: 92, beta: 0.4027299999999977
+learner 3.126042604446411, update_cycles: 93, beta: 0.4027599999999977
+learner 2.8872230052948, update_cycles: 94, beta: 0.40278999999999765
+learner 2.5678610801696777, update_cycles: 95, beta: 0.4028199999999976
+learner 2.5437276363372803, update_cycles: 96, beta: 0.4028499999999976
+learner 2.890087842941284, update_cycles: 97, beta: 0.4028799999999976
+learner 2.9609899520874023, update_cycles: 98, beta: 0.40290999999999755
+learner 2.6566002368927, update_cycles: 99, beta: 0.4029399999999975
+learner 3.125819683074951, update_cycles: 100, beta: 0.4029699999999975
+50 -669.0583545206097 0.4029699999999975
+learner 2.6555731296539307, update_cycles: 101, beta: 0.40299999999999747
+learner 2.3526690006256104, update_cycles: 102, beta: 0.40302999999999745
+learner 2.6882598400115967, update_cycles: 103, beta: 0.4030599999999974
+learner 2.8564913272857666, update_cycles: 104, beta: 0.4030899999999974
+learner 2.620882749557495, update_cycles: 105, beta: 0.40311999999999737
+learner 2.874239683151245, update_cycles: 106, beta: 0.40314999999999734
+learner 2.886975049972534, update_cycles: 107, beta: 0.4031799999999973
+learner 2.316932201385498, update_cycles: 108, beta: 0.4032099999999973
+learner 2.4836132526397705, update_cycles: 109, beta: 0.40323999999999727
+learner 3.585031270980835, update_cycles: 110, beta: 0.40326999999999724
+learner 2.872349739074707, update_cycles: 111, beta: 0.4032999999999972
+learner 2.562544584274292, update_cycles: 112, beta: 0.4033299999999972
+learner 2.87368106842041, update_cycles: 113, beta: 0.40335999999999717
+learner 3.00380802154541, update_cycles: 114, beta: 0.40338999999999714
+learner 2.3030991554260254, update_cycles: 115, beta: 0.4034199999999971
+learner 2.677751064300537, update_cycles: 116, beta: 0.4034499999999971
+learner 2.879164457321167, update_cycles: 117, beta: 0.40347999999999706
+learner 3.8638203144073486, update_cycles: 118, beta: 0.40350999999999704
+learner 2.996255397796631, update_cycles: 119, beta: 0.403539999999997
+learner 2.06699800491333, update_cycles: 120, beta: 0.403569999999997
+learner 2.5999605655670166, update_cycles: 121, beta: 0.40359999999999696
+learner 2.6526198387145996, update_cycles: 122, beta: 0.40362999999999694
+learner 2.687873601913452, update_cycles: 123, beta: 0.4036599999999969
+learner 2.762568235397339, update_cycles: 124, beta: 0.4036899999999969
+learner 2.4479081630706787, update_cycles: 125, beta: 0.40371999999999686
+learner 2.712986707687378, update_cycles: 126, beta: 0.40374999999999683
+learner 3.3624675273895264, update_cycles: 127, beta: 0.4037799999999968
+learner 3.0730690956115723, update_cycles: 128, beta: 0.4038099999999968
+learner 2.423292636871338, update_cycles: 129, beta: 0.40383999999999676
+learner 2.7882657051086426, update_cycles: 130, beta: 0.40386999999999673
+learner 2.997339963912964, update_cycles: 131, beta: 0.4038999999999967
+learner 2.8189499378204346, update_cycles: 132, beta: 0.4039299999999967
+learner 2.3965511322021484, update_cycles: 133, beta: 0.40395999999999666
+learner 3.0995545387268066, update_cycles: 134, beta: 0.40398999999999663
+learner 2.2955734729766846, update_cycles: 135, beta: 0.4040199999999966
+learner 3.22613525390625, update_cycles: 136, beta: 0.4040499999999966
+learner 1.8905351161956787, update_cycles: 137, beta: 0.40407999999999655
+learner 2.544616222381592, update_cycles: 138, beta: 0.4041099999999965
+learner 2.5775389671325684, update_cycles: 139, beta: 0.4041399999999965
+learner 2.559561252593994, update_cycles: 140, beta: 0.4041699999999965
+learner 2.769317388534546, update_cycles: 141, beta: 0.40419999999999645
+learner 2.8179500102996826, update_cycles: 142, beta: 0.4042299999999964
+learner 2.6308109760284424, update_cycles: 143, beta: 0.4042599999999964
+learner 2.7735953330993652, update_cycles: 144, beta: 0.4042899999999964
+learner 3.5063438415527344, update_cycles: 145, beta: 0.40431999999999635
+learner 2.423247814178467, update_cycles: 146, beta: 0.4043499999999963
+learner 2.34175705909729, update_cycles: 147, beta: 0.4043799999999963
+learner 2.305536985397339, update_cycles: 148, beta: 0.4044099999999963
+learner 2.870039224624634, update_cycles: 149, beta: 0.40443999999999625
+learner 2.9680662155151367, update_cycles: 150, beta: 0.4044699999999962
+100 -673.3440688063239 0.4044699999999962
+learner 2.005091428756714, update_cycles: 151, beta: 0.4044999999999962
+learner 2.929497241973877, update_cycles: 152, beta: 0.40452999999999617
+learner 2.3218071460723877, update_cycles: 153, beta: 0.40455999999999614
+learner 2.371633291244507, update_cycles: 154, beta: 0.4045899999999961
+learner 3.341831684112549, update_cycles: 155, beta: 0.4046199999999961
+learner 2.435511350631714, update_cycles: 156, beta: 0.40464999999999607
+learner 2.174377679824829, update_cycles: 157, beta: 0.40467999999999604
+learner 2.3685054779052734, update_cycles: 158, beta: 0.404709999999996
+learner 2.2390575408935547, update_cycles: 159, beta: 0.404739999999996
+learner 2.2153403759002686, update_cycles: 160, beta: 0.40476999999999597
+learner 2.2744288444519043, update_cycles: 161, beta: 0.40479999999999594
+learner 2.2160582542419434, update_cycles: 162, beta: 0.4048299999999959
+learner 2.285343885421753, update_cycles: 163, beta: 0.4048599999999959
+learner 2.379298448562622, update_cycles: 164, beta: 0.40488999999999586
+learner 2.0117013454437256, update_cycles: 165, beta: 0.40491999999999584
+learner 2.7358381748199463, update_cycles: 166, beta: 0.4049499999999958
+learner 2.370284080505371, update_cycles: 167, beta: 0.4049799999999958
+learner 2.658162832260132, update_cycles: 168, beta: 0.40500999999999576
+learner 2.438028335571289, update_cycles: 169, beta: 0.40503999999999574
+learner 2.245265007019043, update_cycles: 170, beta: 0.4050699999999957
+learner 2.6260714530944824, update_cycles: 171, beta: 0.4050999999999957
+learner 2.6258859634399414, update_cycles: 172, beta: 0.40512999999999566
+learner 2.451089859008789, update_cycles: 173, beta: 0.40515999999999563
+learner 2.5001139640808105, update_cycles: 174, beta: 0.4051899999999956
+learner 3.033708333969116, update_cycles: 175, beta: 0.4052199999999956
+learner 2.4971649646759033, update_cycles: 176, beta: 0.40524999999999556
+learner 2.6250669956207275, update_cycles: 177, beta: 0.40527999999999553
+learner 2.469604969024658, update_cycles: 178, beta: 0.4053099999999955
+learner 2.623718500137329, update_cycles: 179, beta: 0.4053399999999955
+learner 2.806373119354248, update_cycles: 180, beta: 0.40536999999999546
+learner 2.45105242729187, update_cycles: 181, beta: 0.40539999999999543
+learner 2.475797414779663, update_cycles: 182, beta: 0.4054299999999954
+learner 2.5169928073883057, update_cycles: 183, beta: 0.4054599999999954
+learner 2.8792741298675537, update_cycles: 184, beta: 0.40548999999999535
+learner 2.6407887935638428, update_cycles: 185, beta: 0.40551999999999533
+learner 2.5299439430236816, update_cycles: 186, beta: 0.4055499999999953
+learner 2.8619446754455566, update_cycles: 187, beta: 0.4055799999999953
+learner 2.5061371326446533, update_cycles: 188, beta: 0.40560999999999525
+learner 2.7188594341278076, update_cycles: 189, beta: 0.4056399999999952
+learner 2.1474897861480713, update_cycles: 190, beta: 0.4056699999999952
+learner 2.6769230365753174, update_cycles: 191, beta: 0.4056999999999952
+learner 3.5515010356903076, update_cycles: 192, beta: 0.40572999999999515
+learner 2.6000540256500244, update_cycles: 193, beta: 0.4057599999999951
+learner 2.2144265174865723, update_cycles: 194, beta: 0.4057899999999951
+learner 2.692150354385376, update_cycles: 195, beta: 0.4058199999999951
+learner 2.350630521774292, update_cycles: 196, beta: 0.40584999999999505
+learner 2.9589719772338867, update_cycles: 197, beta: 0.405879999999995
+learner 2.590524911880493, update_cycles: 198, beta: 0.405909999999995
+learner 2.728071451187134, update_cycles: 199, beta: 0.40593999999999497
+learner 2.604341983795166, update_cycles: 200, beta: 0.40596999999999495
+150 -669.0583545206097 0.40596999999999495
+*** SIGTERM received at time=1710998547 on cpu 26 ***
+PC: @     0x7fb43afd3117  (unknown)  (unknown)
+    @     0x7fb43af84520  (unknown)  (unknown)
+    @ ... and at least 1 more frames
+[2024-03-21 05:22:27,955 E 2950269 2950269] logging.cc:361: *** SIGTERM received at time=1710998547 on cpu 26 ***
+[2024-03-21 05:22:27,955 E 2950269 2950269] logging.cc:361: PC: @     0x7fb43afd3117  (unknown)  (unknown)
+[2024-03-21 05:22:27,955 E 2950269 2950269] logging.cc:361:     @     0x7fb43af84520  (unknown)  (unknown)
+[2024-03-21 05:22:27,955 E 2950269 2950269] logging.cc:361:     @ ... and at least 1 more frames
+learner 4.5824432373046875, update_cycles: 201, beta: 0.4059999999999949
+learner 2.52288556098938, update_cycles: 202, beta: 0.4060299999999949
+learner 2.910982608795166, update_cycles: 203, beta: 0.40605999999999487
+learner 3.177473783493042, update_cycles: 204, beta: 0.40608999999999484
+learner 2.6597225666046143, update_cycles: 205, beta: 0.4061199999999948
+learner 2.8952066898345947, update_cycles: 206, beta: 0.4061499999999948
+learner 2.6855123043060303, update_cycles: 207, beta: 0.40617999999999477
+learner 3.1237709522247314, update_cycles: 208, beta: 0.40620999999999474
+learner 3.6411404609680176, update_cycles: 209, beta: 0.4062399999999947
+learner 3.0344913005828857, update_cycles: 210, beta: 0.4062699999999947
+learner 3.007871150970459, update_cycles: 211, beta: 0.40629999999999467
+learner 2.609907627105713, update_cycles: 212, beta: 0.40632999999999464
+learner 2.97886061668396, update_cycles: 213, beta: 0.4063599999999946
+learner 3.0732455253601074, update_cycles: 214, beta: 0.4063899999999946
+learner 2.6527621746063232, update_cycles: 215, beta: 0.40641999999999456
+learner 3.0369577407836914, update_cycles: 216, beta: 0.40644999999999454
+learner 3.846870183944702, update_cycles: 217, beta: 0.4064799999999945
+learner 2.502861261367798, update_cycles: 218, beta: 0.4065099999999945
