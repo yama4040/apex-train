@@ -24,15 +24,6 @@ from actions import Actions
 import random
 import sys
 
-import google.generativeai as genai
-import json
-# APIキーの設定（環境変数 GEMINI_API_KEY から読み込むのが安全です）
-# 事前にターミナルで export GEMINI_API_KEY="あなたのAPIキー" を実行してください
-"""
-api_key = os.environ.get("GEMINI_API_KEY")
-if api_key:
-    genai.configure(api_key=api_key)
-"""
 tf.config.set_visible_devices([], "GPU")
 
 #このクラスがRayによって別プロセスとして非同期に実行
@@ -52,44 +43,7 @@ class Actor:
 
         self.define_network()
         self.episode_rewards = 0
-        self.episode_count = 0
 
-    #Gemini APIを呼び出すメソッド
-    def evaluate_with_gemini(self, log_text):
-        """Geminiに運転ログを評価させ、追加報酬のJSONを返す"""
-        try:
-            api_key = os.environ.get("GEMINI_API_KEY")
-            if not api_key:
-                print("エラー: APIキーが設定されていません")
-                return {"llm_reward": 0.0, "reason": "No API Key"}
-            
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-2.5-flash')
-            prompt = f"""
-            あなたは熟練の鉄道運転しです。以下のログは，DQNによって学習を行った際の運転ログの一部です。
-            既存のDQN手法では定時運転性と省エネルギー性のみを考慮しています。
-            より人間らしく，滑らかで路線全体の最適化や乗り心地に配慮した運転について評価をしてください。
-            出力は必ず以下のキーを持つJSON形式にしてください。
-             - "llm_reward": 追加報酬（-5.0 〜 5.0の数値）
-            - "reason": その評価を下した理由
-
-            【運転ログ（評価対象ステップとその前後10ステップ）】
-            {log_text}
-            """
-
-            # JSON形式での出力を強制
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",
-                )
-            )
-            return json.loads(response.text)
-        except Exception as e:
-            print(f"[Gemini API Error] {e}")
-            # エラー時は学習を止めないように報酬0で返す
-            return {"llm_reward": 0.0, "reason": "API Error"}
-    
     #ネットワークの定義と初期化
     def define_network(self):
         env = Environment(self.time_step)
@@ -98,7 +52,6 @@ class Actor:
 
     #エピソードを実行して経験を収集し、TD誤差を計算して返す
     def rollout(self, current_weights):
-        self.episode_count += 1
         self.q_network.set_weights(current_weights)
         r=random.random()   #エピソードの初期化方法をランダムに選択
         #第一引数：出発駅のインデックス，第二引数：出発駅の遅延時間，第三引数：重量補正値，第四引数：前方列車の位置オフセット，第五引数：出発位置のオフセット，第六引数：前方列車の制御データ（CSVファイル）
@@ -124,60 +77,6 @@ class Actor:
             transition = (state, action, reward, next_state, done,nest_forbidden_action,self.gamma,priority_correction)
             self.buffer.append(transition)
             self.state = next_state
-        
-        # -------------------------------------------------------------
-        # (既存のコード) エピソードのループが終了し、transitions が完成した直後
-        # -------------------------------------------------------------
-
-        # === LLMによる自動評価と報酬補正（追加部分） ===
-        # 学習が進んだ100エピソード目以降で発動 (self.episode_countの変数がActorにある前提です。なければ適宜調整してください)
-        review_interval = 50  # NエピソードごとにLLM評価を行う
-        
-        if hasattr(self, 'episode_count') and self.episode_count >= 10 and (self.episode_count + self.pid) % review_interval == 0:
-            if len(self.buffer) > 20:
-                # 今回はエピソードの中盤を評価対象とする
-                target_idx = len(self.buffer) // 2 
-                
-                # 前後10ステップを切り出す
-                start_idx = max(0, target_idx - 10)
-                end_idx = min(len(self.buffer), target_idx + 11)
-                context_transitions = self.buffer[start_idx:end_idx]
-
-                # LLMに渡すログテキストの作成
-                log_text = ""
-                for i, t in enumerate(context_transitions):
-                    step_num = start_idx + i
-                    t_state = t[0]
-                    t_action = t[1]
-                    
-                    # ※state[0], state[1]は実際の正規化仕様に合わせて調整してください
-                    speed = round(t_state[0] * 120.0, 1)
-                    distance = round(t_state[1] * 5.0, 2)
-                    action_str = ["惰行", "加速", "減速"][t_action]
-                    
-                    marker = " <--- 【評価対象ステップ】" if step_num == target_idx else ""
-                    log_text += f"Step {step_num}: 残り距離 {distance}km, 速度 {speed}km/h | 選択行動: {action_str}{marker}\n"
-
-                # API呼び出し
-                print(f"[Actor {self.pid}] Gemini評価中... (対象Step: {target_idx})")
-                llm_result = self.evaluate_with_gemini(log_text)
-                llm_reward = float(llm_result.get("llm_reward", 0.0))
-                print(f"[Actor {self.pid}] 評価完了! 追加報酬: {llm_reward} (理由: {llm_result.get('reason')})")
-
-                # 対象ステップのタプルを取り出して、報酬(index=2)を上書きする
-                target_t = self.buffer[target_idx]
-                new_reward = target_t[2] + llm_reward
-                
-                # タプルは直接中身を変更できないため、新しく作り直して self.buffer に戻す
-                self.buffer[target_idx] = (
-                    target_t[0], target_t[1], new_reward, target_t[3], 
-                    target_t[4], target_t[5], target_t[6], target_t[7]
-                )
-        # === LLM追加部分ここまで ===
-
-        # -------------------------------------------------------------
-        # (既存のコード) この直後に self.q_network を使ってTQ値とTD誤差(td_errors)を計算する処理が続く
-        # -------------------------------------------------------------
 
         states = np.vstack([transition[0] for transition in self.buffer])
         actions = np.array([transition[1] for transition in self.buffer])
@@ -186,7 +85,6 @@ class Actor:
         dones = np.vstack([transition[4] for transition in self.buffer])
         next_forbidden_actions=np.vstack([transition[5] for transition in self.buffer])
         gammas=np.vstack([transition[6] for transition in self.buffer])
-        
         
         
         next_qvalues = self.q_network(next_states)      #次の状態に対するQ値をネットワークで予測
@@ -358,7 +256,8 @@ class Tester:
     def test_play(self, current_weights, dir_name, file_name):
         plt.switch_backend('agg')
         self.q_network.set_weights(current_weights)
-        self.q_network.save_weights(dir_name+file_name+".hdf5")
+        #self.q_network.save_weights(dir_name+file_name+".hdf5")
+        self.q_network.save_weights(dir_name+file_name+".weights.h5")
         episode_rewards = 0
         
         #14種類のテストケースを生成（遅延時間、前方列車の位置オフセット、出発位置のオフセットの組み合わせ）
@@ -443,16 +342,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     os.makedirs(dir_name, exist_ok=True)
     os.makedirs(dir_name + "replay/", exist_ok=True)
     
-    #ray.init()
-    # ▼▼▼ 修正後：APIキーの環境変数を子プロセス（Actor）に引き継がせる ▼▼▼
-    ray.init(
-        # 既存の引数があればそのまま残し、以下を追加します
-        runtime_env={
-            "env_vars": {"GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", "")}
-        }
-    )
-    
-    
+    ray.init()
     history = []
     
     #各Actorの探索率を0.001から0.4まで線形に変化させた配列を作成。
@@ -490,10 +380,6 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     t=time.time()
 
     #無限ループで学習継続
-    # 1. 合計カウント用の変数を追加
-    total_episodes = 0
-    MAX_EPISODES = 500  # 例：1000エピソードで終了したい場合
-    
     while True:
         actor_cycles += 1
         
@@ -503,27 +389,14 @@ def main(num_actors, gamma, num_states, time_step=1.0):
             if (len(finished)>0):
                 td_errors, transitions, pid= ray.get(finished[0])
                 replay.add(td_errors, transitions)
-                
-                # 2. ここで合計エピソードをカウント
-                total_episodes += 1
-                
-                # 3. 目標に達したら終了判定
-                if total_episodes >= MAX_EPISODES:
-                    print(f"目標の {MAX_EPISODES} エピソードに達したため学習を終了します。")
-                    # 必要に応じて重みの保存などの終了処理をここに書く
-                    break # 内側のwhileを抜ける
-                
                 wip_actors.extend([actors[pid].rollout.remote(current_weights)])
             else: break
-        
-        # 外側のwhileも抜けるための判定
-        if total_episodes >= MAX_EPISODES:
-            break
 
         
         finished_learner, _ = ray.wait([wip_learner], timeout=0)
         
-        #Learnerのネットワーク更新が完了するのを待ち、完了したら更新された重みとTD誤差、優先度補正値を取得してリプレイバッファの優先度を更新し、新しいミニバッチをサンプリングして次のネットワーク更新を開始する。
+        #Learnerのネットワーク更新が完了するのを待ち、完了したら更新された重みとTD誤差、優先度補正値を取得してリプレイバッファの優先度を更新し、
+        # 新しいミニバッチをサンプリングして次のネットワーク更新を開始する。
         if finished_learner:
             current_weights, indices, td_errors, priority_correction = ray.get(finished_learner[0])
             wip_learner = learner.update_network.remote(minibatchs)
@@ -553,4 +426,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
 
 if __name__ == "__main__":
     #main(num_actors=50, gamma=0.9975, num_states=9, time_step=1.0)
-    main(num_actors=2, gamma=0.9975, num_states=9, time_step=1.0)
+    main(num_actors=15, gamma=0.9975, num_states=9, time_step=1.0)
