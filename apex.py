@@ -111,18 +111,38 @@ class Actor:
             self.state = self.env.reset(11,random.uniform(0.0,20),1.0,None,random.uniform(0.2,1.5))
         self.episode_rewards = 0
         done = False
-        #エピソードの実行と経験の収集
+        
+        # エピソードの実行と経験の収集
         while not done:
-            state = self.state  #現在の状態
-            #現在の状態をネットワークに入力して行動をサンプリング（ε-greedy法）
+            state = self.state
             action,_ = self.q_network.sample_action(np.array(state)[np.newaxis,...], self.epsilon,self.env.forbidden_action)
-            #駅までの残り距離が0.1km以下の場合、優先度を高くするための補正値を計算
             priority_correction=(0.1-(min(max(self.env.station_remaining_distance,0.0),0.1)+0.001))*500+1
+            
+            # ▼▼▼ 修正：正確な勾配情報を取得して保存 ▼▼▼
+            try:
+                # front_gradesの最初の要素（現在位置の区間）から勾配(grade)を取得
+                current_gradient = self.env.train.front_grades[0]["grade"]
+            except Exception:
+                current_gradient = 0.0 # 万が一取得できなかった場合の安全装置
+            
+            raw_info = {
+                "speed": self.env.speed,
+                "distance": self.env.station_remaining_distance,
+                "rem_time": self.env.remaining_time,
+                "hold_time": self.env.holding_time,
+                "limit": self.env.current_speed_limit,
+                "f_train_dist": self.env.fowerd_train_remaining_distance,
+                "gradient": current_gradient
+            }
+            # ▲▲▲ 修正ここまで ▲▲▲
+
             next_state, reward, done = self.env.step(action)
-            nest_forbidden_action=self.env.forbidden_action #次の状態での禁止行動（存在しない場合は0のベクトル）
-            self.episode_rewards += reward  #エピソードの累積報酬を更新
-            #1ステップの経験をバッファに保存（状態、行動、報酬、次の状態、エピソード終了フラグ、次の禁止行動、割引率、優先度補正値）
-            transition = (state, action, reward, next_state, done,nest_forbidden_action,self.gamma,priority_correction)
+            # (以下、既存の self.buffer.append などの処理が続く)
+            nest_forbidden_action=self.env.forbidden_action 
+            self.episode_rewards += reward  
+            
+            # ▼▼▼ 修正：最後に raw_info を追加（9番目の要素） ▼▼▼
+            transition = (state, action, reward, next_state, done, nest_forbidden_action, self.gamma, priority_correction, raw_info)
             self.buffer.append(transition)
             self.state = next_state
         
@@ -148,17 +168,23 @@ class Actor:
                 log_text = ""
                 for i, t in enumerate(context_transitions):
                     step_num = start_idx + i
-                    t_state = t[0]
                     t_action = t[1]
+                    raw_info = t[8] # 保存しておいた生データを取り出す
                     
-                    # ※state[0], state[1]は実際の正規化仕様に合わせて調整してください
-                    speed = round(t_state[0] * 120.0, 1)
-                    distance = round(t_state[1] * 5.0, 2)
+                    # 小数点以下を丸めて見やすくする
+                    speed = round(raw_info["speed"], 1)
+                    limit = round(raw_info["limit"], 1)
+                    distance = round(raw_info["distance"], 2)
+                    rem_time = round(raw_info["rem_time"], 1)
+                    hold_time = round(raw_info["hold_time"], 1)
+                    f_train_dist = round(raw_info["f_train_dist"], 2)
+                    grad = round(raw_info["gradient"], 1)
+                    
                     action_str = ["惰行", "加速", "減速"][t_action]
-                    
                     marker = " <--- 【評価対象ステップ】" if step_num == target_idx else ""
-                    log_text += f"Step {step_num}: 残り距離 {distance}km, 速度 {speed}km/h | 選択行動: {action_str}{marker}\n"
-
+                    
+                    # すべての情報を盛り込んだリッチなログテキスト
+                    log_text += f"Step {step_num}: 残り距離 {distance}km, 残り時間 {rem_time}秒 | 速度 {speed}km/h (制限 {limit}km/h), 勾配 {grad}‰ | 先行列車 {f_train_dist}km先 | 保持 {hold_time}秒 | 行動: {action_str}{marker}\n"
                 # API呼び出し
                 print(f"[Actor {self.pid}] Gemini評価中... (対象Step: {target_idx})")
                 llm_result = self.evaluate_with_gemini(log_text)
@@ -188,7 +214,7 @@ class Actor:
                 # タプルは直接中身を変更できないため、新しく作り直して self.buffer に戻す
                 self.buffer[target_idx] = (
                     target_t[0], target_t[1], new_reward, target_t[3], 
-                    target_t[4], target_t[5], target_t[6], target_t[7]
+                    target_t[4], target_t[5], target_t[6], target_t[7], target_t[8] 
                 )
         # === LLM追加部分ここまで ===
 
@@ -319,7 +345,7 @@ class Learner:
         priority_correction_all=[]
 
         for (indices, weights, transitions) in minibatchs:
-            states, actions, rewards, next_states, dones,next_forbidden_actions,gammas,priority_correction = zip(*transitions)
+            states, actions, rewards, next_states, dones, next_forbidden_actions, gammas, priority_correction, _ = zip(*transitions)
             states = np.vstack(states)
             actions = np.array(actions)
             rewards = np.vstack(rewards)
