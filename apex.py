@@ -38,12 +38,13 @@ tf.config.set_visible_devices([], "GPU")
 #このクラスがRayによって別プロセスとして非同期に実行
 @ray.remote
 class Actor:
-    def __init__(self, pid, epsilon, gamma, num_states, time_step):
+    def __init__(self, pid, epsilon, dir_name, gamma, num_states, time_step):
         tf.config.set_visible_devices([], "GPU")
         self.pid = pid
         self.time_step = time_step
         self.num_states = num_states
         self.env = Environment(self.time_step)
+        self.dir_name = dir_name
 
         self.q_network = QNetwork(self.num_states)
         self.epsilon = epsilon  #探索率
@@ -163,6 +164,22 @@ class Actor:
                 llm_result = self.evaluate_with_gemini(log_text)
                 llm_reward = float(llm_result.get("llm_reward", 0.0))
                 print(f"[Actor {self.pid}] 評価完了! 追加報酬: {llm_reward} (理由: {llm_result.get('reason')})")
+                
+                # ▼▼▼ 追加：LLMの評価結果をファイルに保存する ▼▼▼
+                log_file_path = os.path.join(self.dir_name, "llm_eval.jsonl")
+                os.makedirs(self.dir_name, exist_ok=True)
+                
+                with open(log_file_path, "a", encoding="utf-8") as f:
+                    log_entry = {
+                        "actor_id": self.pid,
+                        "episode": self.episode_count,
+                        "step": target_idx,
+                        "reward": llm_reward,
+                        "reason": llm_result.get('reason')
+                    }
+                    # 日本語が文字化けしないように ensure_ascii=False を指定して書き込み
+                    f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+                # ▲▲▲ 追加ここまで ▲▲▲
 
                 # 対象ステップのタプルを取り出して、報酬(index=2)を上書きする
                 target_t = self.buffer[target_idx]
@@ -357,8 +374,9 @@ class Tester:
 
     def test_play(self, current_weights, dir_name, file_name):
         plt.switch_backend('agg')
+        os.makedirs(dir_name, exist_ok=True)
         self.q_network.set_weights(current_weights)
-        self.q_network.save_weights(dir_name+file_name+".hdf5")
+        self.q_network.save_weights(dir_name+file_name+".weights.h5")
         episode_rewards = 0
         
         #14種類のテストケースを生成（遅延時間、前方列車の位置オフセット、出発位置のオフセットの組み合わせ）
@@ -445,12 +463,13 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     
     #ray.init()
     # ▼▼▼ 修正後：APIキーの環境変数を子プロセス（Actor）に引き継がせる ▼▼▼
-    ray.init(
-        # 既存の引数があればそのまま残し、以下を追加します
-        runtime_env={
-            "env_vars": {"GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", "")}
-        }
-    )
+    gemini_env = {}
+    if os.environ.get("GEMINI_API_KEY"):
+        gemini_env["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY")
+    if gemini_env:
+        ray.init(runtime_env={"env_vars": gemini_env})
+    else:
+        ray.init()
     
     
     history = []
@@ -459,7 +478,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     #これにより、異なるActorが異なる程度の探索を行うようになり，学習の初期段階では多くの探索が行われ、後半ではより安定した行動選択が促される。
     epsilons = np.linspace(0.001, 0.4, num_actors,dtype=np.float32)     
     beta=0.4
-    actors = [Actor.remote(pid=i, epsilon=epsilons[i], gamma=gamma, num_states=num_states, time_step=time_step) for i in range(num_actors)]
+    actors = [Actor.remote(pid=i, epsilon=epsilons[i],dir_name=dir_name,  gamma=gamma, num_states=num_states, time_step=time_step) for i in range(num_actors)]
 
     replay = Replay(buffer_size=2**20, save_dir=dir_name+"replay/")
 
@@ -490,10 +509,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     t=time.time()
 
     #無限ループで学習継続
-    # 1. 合計カウント用の変数を追加
-    total_episodes = 0
-    MAX_EPISODES = 500  # 例：1000エピソードで終了したい場合
-    
+     #無限ループで学習継続
     while True:
         actor_cycles += 1
         
@@ -503,27 +519,14 @@ def main(num_actors, gamma, num_states, time_step=1.0):
             if (len(finished)>0):
                 td_errors, transitions, pid= ray.get(finished[0])
                 replay.add(td_errors, transitions)
-                
-                # 2. ここで合計エピソードをカウント
-                total_episodes += 1
-                
-                # 3. 目標に達したら終了判定
-                if total_episodes >= MAX_EPISODES:
-                    print(f"目標の {MAX_EPISODES} エピソードに達したため学習を終了します。")
-                    # 必要に応じて重みの保存などの終了処理をここに書く
-                    break # 内側のwhileを抜ける
-                
                 wip_actors.extend([actors[pid].rollout.remote(current_weights)])
             else: break
-        
-        # 外側のwhileも抜けるための判定
-        if total_episodes >= MAX_EPISODES:
-            break
 
         
         finished_learner, _ = ray.wait([wip_learner], timeout=0)
         
-        #Learnerのネットワーク更新が完了するのを待ち、完了したら更新された重みとTD誤差、優先度補正値を取得してリプレイバッファの優先度を更新し、新しいミニバッチをサンプリングして次のネットワーク更新を開始する。
+        #Learnerのネットワーク更新が完了するのを待ち、完了したら更新された重みとTD誤差、優先度補正値を取得してリプレイバッファの優先度を更新し、
+        # 新しいミニバッチをサンプリングして次のネットワーク更新を開始する。
         if finished_learner:
             current_weights, indices, td_errors, priority_correction = ray.get(finished_learner[0])
             wip_learner = learner.update_network.remote(minibatchs)
@@ -553,4 +556,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
 
 if __name__ == "__main__":
     #main(num_actors=50, gamma=0.9975, num_states=9, time_step=1.0)
-    main(num_actors=2, gamma=0.9975, num_states=9, time_step=1.0)
+    main(num_actors=15, gamma=0.9975, num_states=9, time_step=1.0)
