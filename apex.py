@@ -23,6 +23,7 @@ from environment import Environment
 from actions import Actions
 import random
 import sys
+#sys.dont_write_bytecode = True
 
 import google.generativeai as genai
 import json
@@ -66,21 +67,33 @@ class Actor:
             
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel('gemini-2.5-flash')
-            prompt = f"""
-            あなたは熟練の鉄道運転しです。以下のログは，DQNによって学習を行った際の運転ログの一部です。
-            既存のDQN手法では定時運転性と省エネルギー性のみを考慮しています。
-            より人間らしく，滑らかで路線全体の最適化や乗り心地に配慮した運転について評価をしてください。
-            出力は必ず以下のキーを持つJSON形式にしてください。
-             - "llm_reward": 追加報酬（-5.0 〜 5.0の数値）
-            - "reason": その評価を下した理由
+            # ▼▼▼ 役割とルールだけを定義する「システムプロンプト」 ▼▼▼
+            system_prompt = """
+            あなたは熟練の鉄道運転士であり、DQN強化学習を指導するメンターです。
+            既存のDQN手法では「定時運転性」と「省エネルギー性」のみを考慮していますが、
+            あなたの役割は、それに加えて「より人間らしく、滑らかで乗り心地に配慮し,定時運転性を守る運転」を教えることです。
 
-            【運転ログ（評価対象ステップとその前後10ステップ）】
-            {log_text}
+            ユーザーから「直近の運転ログ(CSV)」と「AIの内部状態（迷い、Q値が均衡した場所）」が送られてきます。
+            対象ステップにおけるAIの迷いに対し、最も優れた選択肢を判断し、評価を行ってください。
+            
+            【評価基準（追加報酬の目安）】
+            +1.0 〜 +5.0: 非常に良い判断。そのまま推奨したい行動。
+            -1.0 〜 -5.0: 乗り心地が悪い（不必要な加減速）、無駄なエネルギーを使っている、危険な行動。
+            
+            【出力形式】
+            必ず以下のキーを持つJSON形式のみを出力してください。
+            {
+                "llm_reward": <float: 追加報酬の値（-5.0 〜 5.0）>,
+                "reason": "<string: なぜその行動が最適なのか、物理法則や前後の文脈を交えた明確な理由（日本語で100文字程度）>"
+            }
             """
+
+            # システムプロンプトと、今回生成した動的なログ（相談内容）を合体させる
+            full_prompt = system_prompt + "\n\n" + log_text
 
             # JSON形式での出力を強制
             response = model.generate_content(
-                prompt,
+                full_prompt,
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json",
                 )
@@ -114,17 +127,22 @@ class Actor:
         
         # エピソードの実行と経験の収集
         while not done:
-            state = self.state
-            action,_ = self.q_network.sample_action(np.array(state)[np.newaxis,...], self.epsilon,self.env.forbidden_action)
+            state = self.state  #現在の状態
+            
+            # ▼▼▼ 修正: sample_action から Q値(qs) も受け取る ▼▼▼
+            action, qs = self.q_network.sample_action(np.array(state)[np.newaxis,...], self.epsilon, self.env.forbidden_action)
+            # ▲▲▲
+            
             priority_correction=(0.1-(min(max(self.env.station_remaining_distance,0.0),0.1)+0.001))*500+1
             
-            # ▼▼▼ 修正：正確な勾配情報を取得して保存 ▼▼▼
+           # ▼▼▼ 修正：地雷（front_grades）を避け、安全なメソッドを直接叩く ▼▼▼
             try:
-                # front_gradesの最初の要素（現在位置の区間）から勾配(grade)を取得
-                current_gradient = self.env.train.front_grades[0]["grade"]
+                current_gradient = self.env.train.track.get_grade_resistance(self.env.train.position)
             except Exception:
-                current_gradient = 0.0 # 万が一取得できなかった場合の安全装置
+                current_gradient = 0.0 
+            # ▲▲▲ 修正ここまで ▲▲▲
             
+            # ▼▼▼ 修正: raw_info の最後に qs (Q値のリスト) を追加 ▼▼▼
             raw_info = {
                 "speed": self.env.speed,
                 "distance": self.env.station_remaining_distance,
@@ -132,16 +150,15 @@ class Actor:
                 "hold_time": self.env.holding_time,
                 "limit": self.env.current_speed_limit,
                 "f_train_dist": self.env.fowerd_train_remaining_distance,
-                "gradient": current_gradient
+                "gradient": current_gradient,
+                "qs": np.array(qs).flatten().tolist()
             }
-            # ▲▲▲ 修正ここまで ▲▲▲
+            # ▲▲▲
 
             next_state, reward, done = self.env.step(action)
-            # (以下、既存の self.buffer.append などの処理が続く)
             nest_forbidden_action=self.env.forbidden_action 
             self.episode_rewards += reward  
             
-            # ▼▼▼ 修正：最後に raw_info を追加（9番目の要素） ▼▼▼
             transition = (state, action, reward, next_state, done, nest_forbidden_action, self.gamma, priority_correction, raw_info)
             self.buffer.append(transition)
             self.state = next_state
@@ -152,24 +169,70 @@ class Actor:
 
         # === LLMによる自動評価と報酬補正（追加部分） ===
         # 学習が進んだ100エピソード目以降で発動 (self.episode_countの変数がActorにある前提です。なければ適宜調整してください)
-        review_interval = 50  # NエピソードごとにLLM評価を行う
+       # review_interval = 50  # NエピソードごとにLLM評価を行う
         
-        if hasattr(self, 'episode_count') and self.episode_count >= 10 and (self.episode_count + self.pid) % review_interval == 0:
+        #if hasattr(self, 'episode_count') and self.episode_count >= 10 and (self.episode_count + self.pid) % review_interval == 0:
+        # 全体を通じて「約50エピソードに1回」のペースにするための確率（1/50 = 2%）
+       # === LLMによる自動評価と報酬補正（API保護＆CSV圧縮版） ===
+        
+        # 初回のみ、最後にAPIを呼んだ時間を初期化（Actorごとに10秒の時差をつける！）
+        if not hasattr(self, 'last_api_call_time'):
+            # Actor 0 は現在時刻-90秒で即時実行可能、Actor 14 は+50秒（現在時刻+140-90）まで待機
+            self.last_api_call_time = time.time() - 90 + (self.pid * 10)
+
+        current_time = time.time()
+
+        # 全体を通じて「約100エピソードに1回」のペースにするための確率（1/100 = 1%）
+        review_probability = 1.0 / 100.0 
+        
+        # 条件: 10エピソード以降 ＆ 1%の確率に当選 ＆ 前回のAPI呼び出しから90秒以上経過しているか
+        if hasattr(self, 'episode_count') and self.episode_count >= 10 and random.random() < review_probability and (current_time - self.last_api_call_time) > 90:
+            
             if len(self.buffer) > 20:
-                # 今回はエピソードの中盤を評価対象とする
-                target_idx = len(self.buffer) // 2 
+                # APIを呼ぶ権利を獲得したので、タイマーを現在の時刻にリセット
+                self.last_api_call_time = current_time
                 
-                # 前後10ステップを切り出す
-                start_idx = max(0, target_idx - 10)
-                end_idx = min(len(self.buffer), target_idx + 11)
+                # ▼▼▼ 変更：バッファから「一番迷った（Q値の差が小さい）」ステップを探す ▼▼▼
+                target_idx = -1
+                min_q_diff = float('inf')
+                target_qs = []
+                
+                # 最初と最後の5ステップは端っこすぎるので除外して探索
+                for i in range(5, len(self.buffer) - 5):
+                    raw = self.buffer[i][8]
+                    # 保存したQ値を取得（万が一無ければ [0,0,0] にする安全装置）
+                    q_values = raw.get("qs", [0.0, 0.0, 0.0])
+                    
+                    # Q値の上位2つを取得して、その「差」を計算
+                    sorted_qs = sorted(q_values, reverse=True)
+                    q_diff = sorted_qs[0] - sorted_qs[1]
+                    
+                    # 差がより小さい（迷っている）ステップを更新
+                    if q_diff < min_q_diff:
+                        min_q_diff = q_diff
+                        target_idx = i
+                        target_qs = q_values
+
+                # 万が一見つからなければ真ん中にする
+                if target_idx == -1:
+                    target_idx = len(self.buffer) // 2
+                    target_qs = self.buffer[target_idx][8].get("qs", [0.0, 0.0, 0.0])
+                # ▲▲▲ 変更ここまで ▲▲▲
+                
+                # 前後5ステップ（計11ステップ）に減らしてトークンを節約
+                start_idx = max(0, target_idx - 5)
+                end_idx = min(len(self.buffer), target_idx + 6)
                 context_transitions = self.buffer[start_idx:end_idx]
 
-                # LLMに渡すログテキストの作成
-                log_text = ""
+                # ▼▼▼ LLMに渡すログテキストをCSV（表）形式に圧縮 ▼▼▼
+                
+                # ヘッダーを1行目に追加
+                log_text = "Step,残距(km),残時間(s),速度(km/h),制限,勾配(‰),先行(km),保持(s),行動\n"
+                
                 for i, t in enumerate(context_transitions):
                     step_num = start_idx + i
                     t_action = t[1]
-                    raw_info = t[8] # 保存しておいた生データを取り出す
+                    raw_info = t[8] # 保存しておいた生データ
                     
                     # 小数点以下を丸めて見やすくする
                     speed = round(raw_info["speed"], 1)
@@ -181,17 +244,32 @@ class Actor:
                     grad = round(raw_info["gradient"], 1)
                     
                     action_str = ["惰行", "加速", "減速"][t_action]
-                    marker = " <--- 【評価対象ステップ】" if step_num == target_idx else ""
                     
-                    # すべての情報を盛り込んだリッチなログテキスト
-                    log_text += f"Step {step_num}: 残り距離 {distance}km, 残り時間 {rem_time}秒 | 速度 {speed}km/h (制限 {limit}km/h), 勾配 {grad}‰ | 先行列車 {f_train_dist}km先 | 保持 {hold_time}秒 | 行動: {action_str}{marker}\n"
+                    # 評価対象ステップには目印の * を付ける
+                    marker = " *" if step_num == target_idx else ""
+                    
+                    # カンマ区切りで数値を並べる（超軽量化）
+                    log_text += f"{step_num},{distance},{rem_time},{speed},{limit},{grad},{f_train_dist},{hold_time},{action_str}{marker}\n"
+                
+                # ▼▼▼ 追加: LLMへの「相談テキスト（内部状態）」を末尾にくっつける ▼▼▼
+                action_names = ["惰行", "加速", "減速"]
+                log_text += f"\n\n【AIの内部状態（相談）】\n"
+                log_text += f"対象のStep {target_idx} (*の行) において、AIは以下の価値予測（Q値）を算出しました。\n"
+                for i, q in enumerate(target_qs):
+                    log_text += f"- {action_names[i]}: {q:.3f}\n"
+                log_text += f"ご覧の通り上位のQ値の差が小さく、AIは「どの行動が最適か」迷っています。\n"
+                log_text += "物理法則や前後の文脈を考慮し、この状況で最も人間らしく、かつ省エネで安全な選択肢はどれか、明確な理由とともに評価・指導を行ってください。\n"
+                # ▲▲▲ 追加ここまで ▲▲▲
+
                 # API呼び出し
-                print(f"[Actor {self.pid}] Gemini評価中... (対象Step: {target_idx})")
+                print(f"[Actor {self.pid}] Gemini評価中... (対象Step: {target_idx} - Q値均衡検知)")
                 llm_result = self.evaluate_with_gemini(log_text)
                 llm_reward = float(llm_result.get("llm_reward", 0.0))
                 print(f"[Actor {self.pid}] 評価完了! 追加報酬: {llm_reward} (理由: {llm_result.get('reason')})")
                 
-                # ▼▼▼ 追加：LLMの評価結果をファイルに保存する ▼▼▼
+                # LLMの評価結果をファイルに保存する
+                import json
+                import os
                 log_file_path = os.path.join(self.dir_name, "llm_eval.jsonl")
                 os.makedirs(self.dir_name, exist_ok=True)
                 
@@ -203,9 +281,17 @@ class Actor:
                         "reward": llm_reward,
                         "reason": llm_result.get('reason')
                     }
-                    # 日本語が文字化けしないように ensure_ascii=False を指定して書き込み
                     f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-                # ▲▲▲ 追加ここまで ▲▲▲
+                
+                # 人間が読む用のテキストログ保存
+                human_log_path = os.path.join(self.dir_name, "human_readable_log.txt")
+                with open(human_log_path, "a", encoding="utf-8") as f:
+                    f.write(f"========== Actor {self.pid} / Episode {self.episode_count} / Step {target_idx} ==========\n")
+                    f.write("【送信したプロンプト】\n")
+                    f.write(log_text) # ここはそのまま本物の改行として書き込まれます
+                    f.write(f"\n【結果】追加報酬: {llm_reward}\n")
+                    f.write(f"【理由】{llm_result.get('reason')}\n")
+                    f.write("========================================================================\n\n")
 
                 # 対象ステップのタプルを取り出して、報酬(index=2)を上書きする
                 target_t = self.buffer[target_idx]
@@ -278,7 +364,10 @@ class Replay:
         #これにより、TD誤差が大きい経験ほど優先的にサンプリングされるようになる。
         priorities = (np.abs(td_errors) + 0.001) ** self.alpha
         for priority, transition in zip(priorities, transitions):
-            self.priorities[self.count] = priority * transition[-1] #優先度に補正値を掛けることで、駅近の経験の優先度をさらに高くする
+            #self.priorities[self.count] = priority * transition[-1] #優先度に補正値を掛けることで、駅近の経験の優先度をさらに高くする
+            # ▼▼▼ 修正: transition[-1] を transition[7] に変更 ▼▼▼
+            self.priorities[self.count] = priority * transition[7] 
+            # ▲▲▲ 修正ここまで ▲▲▲
             self.buffer[self.count] = transition
             self.count += 1
             if self.count == self.buffer_size:
@@ -582,4 +671,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
 
 if __name__ == "__main__":
     #main(num_actors=50, gamma=0.9975, num_states=9, time_step=1.0)
-    main(num_actors=15, gamma=0.9975, num_states=9, time_step=1.0)
+    main(num_actors=2, gamma=0.9975, num_states=9, time_step=1.0)
