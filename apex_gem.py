@@ -25,7 +25,7 @@ import random
 import sys
 #sys.dont_write_bytecode = True
 
-from openai import OpenAI
+import google.generativeai as genai
 import json
 # APIキーの設定（環境変数 GEMINI_API_KEY から読み込むのが安全です）
 # 事前にターミナルで export GEMINI_API_KEY="あなたのAPIキー" を実行してください
@@ -56,19 +56,17 @@ class Actor:
         self.episode_rewards = 0
         self.episode_count = 0
 
-    # ローカルLLM (OpenAI互換API) を呼び出すメソッド
-    def evaluate_with_local_llm(self, log_text):
-        """ローカルLLMに運転ログを評価させ、追加報酬のJSONを返す"""
+    #Gemini APIを呼び出すメソッド
+    def evaluate_with_gemini(self, log_text):
+        """Geminiに運転ログを評価させ、追加報酬のJSONを返す"""
         try:
-            api_key = os.environ.get("OPENAI_API_KEY", "dummy_key") # ローカルの場合はダミーでも通ることがあります
-            base_url = os.environ.get("OPENAI_BASE_URL")
-
-            # OpenAIクライアントの初期化（base_urlがあれば適用）
-            client_kwargs = {"api_key": api_key}
-            if base_url:
-                client_kwargs["base_url"] = base_url
-            client = OpenAI(**client_kwargs)
-
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                print("エラー: APIキーが設定されていません")
+                return {"llm_reward": 0.0, "reason": "No API Key"}
+            
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-2.5-flash')
             # ▼▼▼ 役割とルールだけを定義する「システムプロンプト」 ▼▼▼
             system_prompt = """
             あなたは熟練の鉄道運転士であり、DQN強化学習を指導するメンターです。
@@ -90,23 +88,19 @@ class Actor:
             }
             """
 
-            # OpenAI APIの形式でリクエストを送信
-            response = client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": log_text}
-                ],
-                # JSON形式での出力を強制（ローカルモデルが対応している場合）
-                response_format={ "type": "json_object" },
-                temperature=0.3 # 評価を安定させるため少し低めに設定
+            # システムプロンプトと、今回生成した動的なログ（相談内容）を合体させる
+            full_prompt = system_prompt + "\n\n" + log_text
+
+            # JSON形式での出力を強制
+            response = model.generate_content(
+                full_prompt,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                )
             )
-            
-            content = response.choices[0].message.content
-            return json.loads(content)
-            
+            return json.loads(response.text)
         except Exception as e:
-            print(f"[Local LLM API Error] {e}")
+            print(f"[Gemini API Error] {e}")
             # エラー時は学習を止めないように報酬0で返す
             return {"llm_reward": 0.0, "reason": "API Error"}
     
@@ -268,8 +262,8 @@ class Actor:
                 # ▲▲▲ 追加ここまで ▲▲▲
 
                 # API呼び出し
-                print(f"[Actor {self.pid}] ローカルLLM評価中... (対象Step: {target_idx} - Q値均衡検知)")
-                llm_result = self.evaluate_with_local_llm(log_text)
+                print(f"[Actor {self.pid}] Gemini評価中... (対象Step: {target_idx} - Q値均衡検知)")
+                llm_result = self.evaluate_with_gemini(log_text)
                 llm_reward = float(llm_result.get("llm_reward", 0.0))
                 print(f"[Actor {self.pid}] 評価完了! 追加報酬: {llm_reward} (理由: {llm_result.get('reason')})")
                 
@@ -583,15 +577,12 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     os.makedirs(dir_name + "replay/", exist_ok=True)
     
     #ray.init()
-    # ▼▼▼ 修正後：APIキー等の環境変数を子プロセス（Actor）に引き継がせる ▼▼▼
-    llm_env = {}
-    if os.environ.get("OPENAI_API_KEY"):
-        llm_env["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
-    if os.environ.get("OPENAI_BASE_URL"):
-        llm_env["OPENAI_BASE_URL"] = os.environ.get("OPENAI_BASE_URL")
-        
-    if llm_env:
-        ray.init(runtime_env={"env_vars": llm_env})
+    # ▼▼▼ 修正後：APIキーの環境変数を子プロセス（Actor）に引き継がせる ▼▼▼
+    gemini_env = {}
+    if os.environ.get("GEMINI_API_KEY"):
+        gemini_env["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY")
+    if gemini_env:
+        ray.init(runtime_env={"env_vars": gemini_env})
     else:
         ray.init()
     
