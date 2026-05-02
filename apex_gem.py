@@ -671,4 +671,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
 
 if __name__ == "__main__":
     #main(num_actors=50, gamma=0.9975, num_states=9, time_step=1.0)
-    main(num_actors=2, gamma=0.9975, num_states=9, time_step=1.0)
+    main(num_actors=15, gamma=0.9975, num_states=9, time_step=1.0)

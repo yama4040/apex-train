@@ -74,9 +74,7 @@ class Actor:
             system_prompt = """
             あなたは熟練の鉄道運転士であり、DQN強化学習を指導するメンターです。
             提供された【行動変化の抽出ログ】にある複数の「決断ポイント（*マークのStep）」すべてに対して、路線全体を見据えたマクロな視点から評価を行ってください。
-            ログの右端には、シミュレータが自動計算した近視眼的な「Env報酬」が記載されています。
-            あなたの任務は、路線全体を見据えた視点から、その行動が真に得るべきであった「理想の最終報酬（ideal_reward）」を判定することです。
-            評価を行う際は、その決断ポイントに至るまでの「保持時間（惰行・加速・減速の状態をどれだけ長く維持していたか）」や「速度」「残時間」「残距離」「制限速度」「勾配」「先行列車との距離」などの要素も考慮に入れてください。
+            また、評価を行う際は、その決断ポイントに至るまでの「保持時間（惰行・加速・減速の状態をどれだけ長く維持していたか）」や「速度」「残時間」「残距離」「制限速度」「勾配」「先行列車との距離」などの要素も考慮に入れてください。
             
             【運転士の好み】
             - 乗り心地を重視し、頻繁な行動変更を避ける傾向がある。
@@ -84,7 +82,6 @@ class Actor:
             - 無駄なブレーキを避けるため、先行列車に近いづいているときは早めに惰行に移ることを好む。
             
             【評価基準（追加報酬の目安：-1.0 ～ 1.0）】
-            ※シミュレータの基本報酬は小さくスケールされています。このスケールに合わせて判定してください。
             ・正の報酬 (0.0 ～ 1.0)：直前の行動の「保持時間」が十分に長く（乗り心地が良い）、かつ定時性や省エネの観点からそのタイミングでの行動変更が戦略的に完璧な場合。
             ・負の報酬 (-1.0 ～ -0.1)：保持時間が短すぎる（ガチャガチャ切り替えている）、または速度や遅延の状況から見て、行動を変えるタイミングが早すぎる・遅すぎる場合。
             ・ニュートラル (0.0)：特に致命的な問題がない場合。
@@ -95,8 +92,8 @@ class Actor:
                 "evaluations": [
                     {
                         "step": <int: 評価対象のStep番号（*マークの行）>,
-                        "ideal_reward": <float: あなたが考える理想の最終報酬（-1.0 〜 1.0）>,
-                        "reason": "<string: なぜEnv報酬から変更したのか（あるいは変更しなかったのか）の理由（50～100文字程度）>"
+                        "llm_reward": <float: 追加報酬の値（-1.0 〜 1.0）>,
+                        "reason": "<string: その判断に対する評価理由（50文字程度）>"
                     }
                 ]
             }
@@ -252,8 +249,7 @@ class Actor:
                         
                         for dp in decision_points:
                             log_text += f"--- 決断ポイント Step {dp} ---\n"
-                            # ▼ 変更：ヘッダーの末尾に「Env報酬」を追加
-                            log_text += "Step,残距(km),残時間(s),速度(km/h),制限,勾配(‰),先行(km),保持(s),行動,Env報酬\n"
+                            log_text += "Step,残距(km),残時間(s),速度(km/h),制限,勾配(‰),先行(km),保持(s),行動\n"
                             
                             start_idx = max(0, dp - 1)
                             end_idx = min(len(self.buffer), dp + 2)
@@ -261,12 +257,9 @@ class Actor:
                             for i in range(start_idx, end_idx):
                                 t = self.buffer[i]
                                 raw = t[8]
-                                # ▼ 変更：そのステップでシミュレータが出した生の報酬を取得
-                                env_reward = round(t[2], 4)
                                 marker = " *" if i == dp else ""
                                 action_str = ["惰行", "加速", "減速"][t[1]]
-                                # ▼ 変更：末尾に env_reward を追加してテキスト化
-                                log_text += f"{i},{round(raw['distance'],2)},{round(raw['rem_time'],1)},{round(raw['speed'],1)},{round(raw['limit'],1)},{round(raw['gradient'],1)},{round(raw['f_train_dist'],2)},{round(raw['hold_time'],1)},{action_str},{env_reward}{marker}\n"
+                                log_text += f"{i},{round(raw['distance'],2)},{round(raw['rem_time'],1)},{round(raw['speed'],1)},{round(raw['limit'],1)},{round(raw['gradient'],1)},{round(raw['f_train_dist'],2)},{round(raw['hold_time'],1)},{action_str}{marker}\n"
                             log_text += "\n"
 
                         print(f"[Actor {self.pid}] エピソード終了。マクロ評価を実行中... (決断ポイント: {len(decision_points)}箇所)")
@@ -282,52 +275,47 @@ class Actor:
                                 hf.write(f"========== Actor {self.pid} / Episode {self.episode_count} (Macro Eval) ==========\n")
                                 hf.write(log_text + "\n【LLMの評価結果】\n")
                                 
-                                # ▼ 変更：llm_reward ではなく ideal_reward としてパース
                                 for item in llm_result["evaluations"]:
                                     step_num = item.get("step")
-                                    ideal_reward_val = float(item.get("ideal_reward", 0.0))
+                                    reward_val = float(item.get("llm_reward", 0.0))
                                     reason = item.get("reason", "")
                                     
                                     if step_num is not None:
-                                        evals_dict[step_num] = ideal_reward_val
+                                        evals_dict[step_num] = reward_val
                                         
                                         log_entry = {
                                             "actor_id": self.pid,
                                             "episode": self.episode_count,
                                             "step": step_num,
-                                            "ideal_reward": ideal_reward_val,
+                                            "reward": reward_val,
                                             "reason": reason
                                         }
                                         f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-                                        hf.write(f"- Step {step_num} | 理想報酬: {ideal_reward_val} | 理由: {reason}\n")
+                                        hf.write(f"- Step {step_num} | 追加報酬: {reward_val} | 理由: {reason}\n")
                                 
                                 hf.write("========================================================================\n\n")
 
                         # 3. 区間報酬（インターバル・リワード）の適用
+                        # 行動が変わるまで、その区間全体にLLMの評価報酬を継続して加算する
                         current_llm_reward = 0.0
                         current_action = None
                         
                         for i in range(len(self.buffer)):
                             action = self.buffer[i][1]
                             
+                            # 実際の行動が切り替わったら、いったん追加報酬をリセット
                             if action != current_action:
                                 current_llm_reward = 0.0
                                 current_action = action
                                 
-                            # ▼ 変更：評価対象ステップなら「理想の報酬」と「現実の報酬」の差分を計算する
+                            # このステップが評価対象（決断ポイント）であれば報酬額を更新
                             if i in evals_dict:
-                                ideal_reward = evals_dict[i]
-                                original_env_reward = self.buffer[i][2]
+                                current_llm_reward = max(-0.1, min(0.1, evals_dict[i]))
                                 
-                                # 【核心部】LLMの理想に合わせるための補正値（差分）
-                                diff = ideal_reward - original_env_reward
-                                
-                                # 異常値のクリッピング（差分が一気に大きすぎないよう制限）
-                                current_llm_reward = max(-0.2, min(0.2, diff))
-                                
+                            # 現在の区間報酬が0でなければ加算して上書き
                             if current_llm_reward != 0.0:
                                 t = list(self.buffer[i])
-                                t[2] += current_llm_reward  # Env報酬 + 補正値(diff) = 理想の報酬
+                                t[2] += current_llm_reward
                                 self.buffer[i] = tuple(t)
 
         # -------------------------------------------------------------

@@ -14,7 +14,14 @@ class Track:
         csv = self.__read_csv("./input/speed_limit.csv")
         self.sections = []
         for i in range(len(csv["start"])):
-            self.sections.append({"start": csv["start"][i], "speed_limit": csv["speed_limit"][i]})
+            #self.sections.append({"start": csv["start"][i], "speed_limit": csv["speed_limit"][i]})
+            # ▼【修正】numpy.float64を純粋なfloatにキャスト
+            self.sections.append({
+                "start": float(csv["start"][i]), 
+                "speed_limit": float(csv["speed_limit"][i])
+            })
+
+            
 
         # =============================================================================
         #         出発時間
@@ -34,17 +41,45 @@ class Track:
         # self.arrive     = self.__read_csv('arrive')
         csv=self.__read_csv("./input/curve.csv")
         self.curve=[]
+        
         for i in range(len(csv["start"])):
+            """
             if (i>0 and round(csv["end"][i-1],4)!=round(csv["start"][i],4)):
                 self.curve.append({"start":csv["end"][i-1],"curve":0.0})
-            self.curve.append({"start":csv["start"][i],"curve":800.0/csv["curve"][i]})
+            self.curve.append({"start":csv["start"][i],"curve":800.0/csv["curve"][i]}
+            """
+            # ▼【修正】すべての数値を取り出す際にfloat()でキャスト
+            if (i>0 and round(float(csv["end"][i-1]), 4) != round(float(csv["start"][i]), 4)):
+                self.curve.append({"start": float(csv["end"][i-1]), "curve": 0.0})
+            self.curve.append({
+                "start": float(csv["start"][i]), 
+                "curve": float(800.0 / csv["curve"][i])
+            })
+        
+        
+            
         csv=self.__read_csv("./input/grade.csv")
         self.grade=[]
+        
         for i in range(len(csv["start"])):
-            if -40 < csv["grade"][i] <= 30:
+            #if -40 < csv["grade"][i] <= 30:
+            grade_val = csv["grade"][i]
+            """
+            if -40 < grade_val and grade_val <= 30:
                 self.grade.append({"start":csv["start"][i],"grade":csv["grade"][i]})
             else:
                 self.grade.append({"start":csv["start"][i],"grade":0.0})
+            """
+            # ▼【修正】キャスト＆連続比較(Chained Comparison)の分割
+            grade_val = float(csv["grade"][i])
+            start_val = float(csv["start"][i])
+            
+            if -40 < grade_val and grade_val <= 30:
+                self.grade.append({"start": start_val, "grade": grade_val})
+            else:
+                self.grade.append({"start": start_val, "grade": 0.0})
+        
+        
 
     def __read_csv(self, path):  # inputディレクトリにあるcsvname.csvのファイルを開く
         with codecs.open(path, "r", "utf-8", "ignore") as f:
@@ -52,13 +87,15 @@ class Track:
 
     def get_grade_resistance(self, position):
         for i in range(len(self.grade)-1):
-            if self.grade[i]["start"] <= position <= self.grade[i+1]["start"]:
+            #if self.grade[i]["start"] <= position <= self.grade[i+1]["start"]:
+            if self.grade[i]["start"] <= position and position <= self.grade[i+1]["start"]:
                 return self.grade[i]["grade"]
         return 0
 
     def get_curve_resistance(self, position):
         for i in range(len(self.curve)-1):
-            if self.curve[i]["start"] <= position <= self.curve[i+1]["start"]:
+            #if self.curve[i]["start"] <= position <= self.curve[i+1]["start"]:
+            if self.curve[i]["start"] <= position and position <= self.curve[i+1]["start"]:
                 return self.curve[i]["curve"]
         return 0
 
