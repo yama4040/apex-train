@@ -1,3 +1,8 @@
+"""
+・行動を変えたポイントをすべて抽出して-1.0～+1.0の範囲で報酬をLLMが与えることで、その行動を評価
+"""
+
+
 import time
 import datetime
 import os
@@ -74,7 +79,8 @@ class Actor:
             system_prompt = """
             あなたは熟練の鉄道運転士であり、DQN強化学習を指導するメンターです。
             提供された【行動変化の抽出ログ】にある複数の「決断ポイント（*マークのStep）」すべてに対して、路線全体を見据えたマクロな視点から評価を行ってください。
-            また、評価を行う際は、その決断ポイントに至るまでの「保持時間（惰行・加速・減速の状態をどれだけ長く維持していたか）」や「速度」「残時間」「残距離」「制限速度」「勾配」「先行列車との距離」などの要素も考慮に入れてください。
+            また、評価を行う際は、その決断ポイントに至るまでの「保持時間（惰行・加速・減速の状態をどれだけ長く維持していたか）」や「速度」「残時間」「残距離」「制限速度」「勾配」
+            「先行列車との距離」などの要素も考慮に入れてください。
             
             【運転士の好み】
             - 乗り心地を重視し、頻繁な行動変更を避ける傾向がある。
@@ -219,7 +225,7 @@ class Actor:
         current_time = time.time()
         
         start_episode=200  # 10エピソード以降でLLM評価を開始する
-        review_episode_interval = 30
+        review_episode_interval = 10
         
         if hasattr(self, 'episode_count') and self.episode_count >= start_episode and (self.episode_count % review_episode_interval == self.pid % review_episode_interval):
             if (current_time - self.last_api_call_time) > 10:
@@ -665,7 +671,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
         wip_actors.extend([actors[pid].rollout.remote(current_weights)])
 
     minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
-    wip_learner = learner.update_network.remote(minibatchs)
+    wip_learner = [learner.update_network.remote(minibatchs)]
     minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
     wip_tester = tester.test_play.remote(current_weights, dir_name, "0")
 

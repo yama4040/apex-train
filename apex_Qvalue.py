@@ -1,14 +1,7 @@
-"""
-・行動を変えたポイントをすべて抽出
-・その行動に対する報酬を考慮して、LLMが最終的な報酬を決定（補正, シミュレータの報酬＋LLMの報酬）
-"""
-
-
 import time
 import datetime
 import os
 
-import gc
 
 import ray
 import numpy as np
@@ -80,54 +73,30 @@ class Actor:
             # ▼▼▼ 役割とルールだけを定義する「システムプロンプト」 ▼▼▼
             system_prompt = """
             あなたは熟練の鉄道運転士であり、DQN強化学習を指導するメンターです。
-            提供された【行動変化の抽出ログ】の右端には、シミュレータが自動計算した「Env報酬」が記載されています。
-            あなたの任務は、路線全体を見据えた視点から、このEnv報酬に対する「加算すべき増減値（llm_modifier）」を決定することです。
-            
-            【Env報酬の仕様と含まれる要素】
-            シミュレータが算出する「Env報酬」は、以下のミクロな物理評価の合算値がスケールされて出力されています。
-            ・ペナルティ要素：速度超過等の絶対ルール(sl)、目標からの距離(tve)、遅延時間(tce)、7秒未満の短いノッチ保持や乱暴な操作(ic)、加速時の消費エネルギー(ef)
-            ・ボーナス要素：駅の停止位置10m以内への正確な停車(de)
+            既存のDQN手法では「定時運転性」と「省エネルギー性」のみを考慮していますが、
+            あなたの役割は、それに加えて「より人間らしく、滑らかで乗り心地に配慮し,定時運転性を守る運転」を教えることです。
 
-            【あなたの役割（シミュレータとの役割分担）】
-            ミクロな計算（何秒保持したか、何mズレたか等）は既にシミュレータがEnv報酬として完璧に計算しています。あなたが同じ計算をやり直す必要はありません。
-            あなたの役割は、シミュレータが見落としがちな「マクロな戦略性（路線全体を通した遅延回復や、長期的な乗り心地の美しさ）」の観点から、Env報酬が妥当かを評価し、増減値（llm_modifier）で補正することです。
+            ユーザーから「直近の運転ログ(CSV)」と「AIの内部状態（迷い、Q値が均衡した場所）」が送られてきます。
+            対象ステップにおけるAIの迷いに対し、最も優れた選択肢を判断し、評価を行ってください。
             
-            【Env報酬の仕様とスケールに関する事前知識】
-            このシミュレータの「Env報酬」は、基本スコアを最終的に「30で割った値」としてスケーリングされています。具体的な相場は以下の通りです。
-            ・通常走行時（安全な加速・惰行・減速）： 0.0 ～ -0.02 （わずかな時間経過ペナルティ）
-            ・タイムアウト（時間切れによる強制終了）： -0.5 付近
-            ・制限速度の超過などの致命的な危険行為： -1.0 ～ -3.0 の大きなマイナス
-            ・目標駅への無事到着（ゴール）： +1.0 ～ +3.0 程度の大きなプラス
+            【あなたのタスク】
+            1. CSVの対象ステップ（*マークの行）で、「AIが実際に選択した行動」を確認してください。
+            2. 物理法則や前後の文脈から、その状況における「真の最適行動」を推論してください。
+            3. 「AIが実際に選択した行動」と「真の最適行動」を比較し、以下の基準で報酬を決定してください。
             
-            【運転士の好み】
-            - 乗り心地を重視し、頻繁な行動変更を避ける傾向がある。
-            - 頻繁なノッチ操作をせず、定時運行を実現するために、戦略的なタイミングで行動を変えることを好む。
-            - 無駄なブレーキを避けるため、先行列車に近いづいているときは早めに惰行に移ることを好む。
+            【評価基準（追加報酬の目安）】
+            与える報酬は-1.0から+1.0の範囲で、以下の基準を参考にしてください。
+            0.0 ～ +1.0：正の報酬。定時運転性と省エネルギー性を満たしつつ、さらに人間らしい滑らかな運転ができている場合に、0.0以上の追加報酬を与えてください。
+            0.0 ～ -1.0：負の報酬。定時運転性や省エネルギー性が損なわれている、あるいは路線全体を見て危険な行動や鉄道運転理論において不適切な行動が見られる場合に、
+                        0.0以下の追加報酬を与えてください。
+            0.0：ニュートラル。定時運転性と省エネルギー性を満たしているが、特に人間らしい滑らかさや乗り心地の配慮が感じられない場合など、
+                改善の余地があるが致命的ではない行動に対しては、0.0の追加報酬を与えてください。
             
-            【増減値（llm_modifier）の決定ルール】
-            以下の3つのパターンのいずれかに従い、増減値を決定してください。
-            
-            1. 日常的な運転の評価（Env報酬が 0.0 近辺の時）
-               乗り心地やマクロな戦略の観点から、**-0.1 ～ +0.1** の範囲で微小な増減値を与えてください。
-               （例：見事なタイミングでの惰行開始には +0.05、無駄で頻繁なノッチ切り替えには -0.05）
-            
-            2. 致命的エラーの尊重（Env報酬が -0.5 以下の大きなマイナスの時）
-               速度超過やタイムアウト等の物理的ペナルティをLLMが軽減してはいけません。増減値は **0.0** または微小なマイナスとし、Env報酬のペナルティをそのまま活かしてください。
-            
-            3. 局所最適のキャンセル（間違ったプラスの時）
-               Env報酬がプラス（+1.0等）を出していても、路線全体で見れば「大幅な遅延を伴う到着」や「乗り心地を無視した乱暴な運転」である場合、
-               そのプラスを打ち消すために **-1.0 ～ -3.0** などの「Env報酬を相殺するマイナス」を増減値として与えてください。
-
             【出力形式】
-            必ず以下のJSONスキーマに従い、余計な挨拶や説明文は一切含めず、JSONデータのみを出力してください。
+            必ず以下のキーを持つJSON形式のみを出力してください。
             {
-                "evaluations": [
-                    {
-                        "step": <int>,
-                        "llm_modifier": <float: 状況に応じて計算した増減値>,
-                        "reason": "<string>"
-                    }
-                ]
+                "llm_reward": <float: 追加報酬の値（-1.0 〜 1.0）>,
+                "reason": "<string: この状況での最適行動とその行動がなぜ最適なのか、物理法則や前後の文脈を交えた明確な理由（日本語で100文字程度）>"
             }
             """
 
@@ -253,112 +222,130 @@ class Actor:
         start_episode=200  # 10エピソード以降でLLM評価を開始する
         review_episode_interval = 30
         
+        # 条件: 10エピソード以降 ＆ 1%の確率に当選 ＆ 前回のAPI呼び出しから90秒以上経過しているか
         if hasattr(self, 'episode_count') and self.episode_count >= start_episode and (self.episode_count % review_episode_interval == self.pid % review_episode_interval):
-            if (current_time - self.last_api_call_time) > 10:
-                if len(self.buffer) > 10:
+            
+            # API連投防止の最低限のセーフティ（エピソードが異常終了して高速ループした場合の防波堤）
+            current_time = time.time()
+            if not hasattr(self, 'last_api_call_time') or (current_time - self.last_api_call_time) > 10:
+                self.last_api_call_time = current_time
+            
+                if len(self.buffer) > 20:
+                    # APIを呼ぶ権利を獲得したので、タイマーを現在の時刻にリセット
                     self.last_api_call_time = current_time
                     
-                    # 1. 決断ポイント（ノッチが変化した瞬間）の抽出
-                    decision_points = []
-                    prev_action = self.buffer[0][1]
-                    for i in range(1, len(self.buffer)):
-                        curr_action = self.buffer[i][1]
-                        if prev_action != curr_action:
-                            decision_points.append(i)
-                            prev_action = curr_action
+                    # ▼▼▼ 変更：バッファから「一番迷った（Q値の差が小さい）」ステップを探す ▼▼▼
+                    target_idx = -1
+                    min_q_diff = float('inf')
+                    target_qs = []
                     
-                    # APIトークン保護のため、決断ポイントの上限を20箇所に制限
-                    MAX_EVALS = 20
-                    if len(decision_points) > MAX_EVALS:
-                        # 等間隔にサンプリングして全体を評価させる
-                        indices = np.linspace(0, len(decision_points) - 1, MAX_EVALS, dtype=int)
-                        decision_points = [decision_points[idx] for idx in indices]
-
-                    if len(decision_points) > 0:
-                        log_text = "【路線全体の情報】\n"
-                        log_text += f"エピソード総ステップ数: {len(self.buffer)}\n\n"
-                        log_text += "【行動変化の抽出ログ】\n"
+                    # 最初と最後の5ステップは端っこすぎるので除外して探索
+                    for i in range(5, len(self.buffer) - 5):
+                        raw = self.buffer[i][8]
+                        # 保存したQ値を取得（万が一無ければ [0,0,0] にする安全装置）
+                        q_values = raw.get("qs", [0.0, 0.0, 0.0])
                         
-                        for dp in decision_points:
-                            log_text += f"--- 決断ポイント Step {dp} ---\n"
-                            # ▼ 変更：ヘッダーの末尾に「Env報酬」を追加
-                            log_text += "Step,残距(km),残時間(s),速度(km/h),制限,勾配(‰),先行(km),保持(s),行動,Env報酬\n"
-                            
-                            start_idx = max(0, dp - 1)
-                            end_idx = min(len(self.buffer), dp + 2)
-                            
-                            for i in range(start_idx, end_idx):
-                                t = self.buffer[i]
-                                raw = t[8]
-                                # ▼ 変更：そのステップでシミュレータが出した生の報酬を取得
-                                env_reward = round(t[2], 4)
-                                marker = " *" if i == dp else ""
-                                action_str = ["惰行", "加速", "減速"][t[1]]
-                                # ▼ 変更：末尾に env_reward を追加してテキスト化
-                                log_text += f"{i},{round(raw['distance'],2)},{round(raw['rem_time'],1)},{round(raw['speed'],1)},{round(raw['limit'],1)},{round(raw['gradient'],1)},{round(raw['f_train_dist'],2)},{round(raw['hold_time'],1)},{action_str},{env_reward}{marker}\n"
-                            log_text += "\n"
-
-                        print(f"[Actor {self.pid}] エピソード終了。マクロ評価を実行中... (決断ポイント: {len(decision_points)}箇所)")
-                        llm_result = self.evaluate_with_local_llm(log_text)
+                        # Q値の上位2つを取得して、その「差」を計算
+                        sorted_qs = sorted(q_values, reverse=True)
+                        q_diff = sorted_qs[0] - sorted_qs[1]
                         
-                        # 2. 評価結果のパースと保存
-                        evals_dict = {}
-                        if "evaluations" in llm_result:
-                            log_file_path = os.path.join(self.dir_name, "llm_eval.jsonl")
-                            human_log_path = os.path.join(self.dir_name, "human_readable_log.txt")
-                            
-                            with open(log_file_path, "a", encoding="utf-8") as f, open(human_log_path, "a", encoding="utf-8") as hf:
-                                hf.write(f"========== Actor {self.pid} / Episode {self.episode_count} (Macro Eval) ==========\n")
-                                hf.write(log_text + "\n【LLMの評価結果】\n")
-                                
-                                # ▼ 変更：llm_reward ではなく ideal_reward としてパース
-                                for item in llm_result["evaluations"]:
-                                    step_num = item.get("step")
-                                    ideal_reward_val = float(item.get("ideal_reward", 0.0))
-                                    reason = item.get("reason", "")
-                                    
-                                    if step_num is not None:
-                                        evals_dict[step_num] = ideal_reward_val
-                                        
-                                        log_entry = {
-                                            "actor_id": self.pid,
-                                            "episode": self.episode_count,
-                                            "step": step_num,
-                                            "ideal_reward": ideal_reward_val,
-                                            "reason": reason
-                                        }
-                                        f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-                                        hf.write(f"- Step {step_num} | 理想報酬: {ideal_reward_val} | 理由: {reason}\n")
-                                
-                                hf.write("========================================================================\n\n")
+                        # 差がより小さい（迷っている）ステップを更新
+                        if q_diff < min_q_diff:
+                            min_q_diff = q_diff
+                            target_idx = i
+                            target_qs = q_values
 
-                        # 3. 区間報酬（インターバル・リワード）の適用
-                        current_llm_reward = 0.0
-                        current_action = None
+                    # 万が一見つからなければ真ん中にする
+                    if target_idx == -1:
+                        target_idx = len(self.buffer) // 2
+                        target_qs = self.buffer[target_idx][8].get("qs", [0.0, 0.0, 0.0])
+                    # ▲▲▲ 変更ここまで ▲▲▲
+                    
+                    # 前後5ステップ（計11ステップ）に減らしてトークンを節約
+                    start_idx = max(0, target_idx - 5)
+                    end_idx = min(len(self.buffer), target_idx + 6)
+                    context_transitions = self.buffer[start_idx:end_idx]
+
+                    # ▼▼▼ LLMに渡すログテキストをCSV（表）形式に圧縮 ▼▼▼
+                    
+                    # ヘッダーを1行目に追加
+                    log_text = "Step,残距(km),残時間(s),速度(km/h),制限,勾配(‰),先行(km),保持(s),行動\n"
+                    
+                    for i, t in enumerate(context_transitions):
+                        step_num = start_idx + i
+                        t_action = t[1]
+                        raw_info = t[8] # 保存しておいた生データ
                         
-                        for i in range(len(self.buffer)):
-                            action = self.buffer[i][1]
-                            
-                            if action != current_action:
-                                current_llm_reward = 0.0
-                                current_action = action
-                                
-                            # このステップが評価対象（決断ポイント）であれば報酬額を更新
-                            if i in evals_dict:
-                                llm_modifier = evals_dict[i]
-                                
-                                # ※ Python側での差分計算（引き算）は不要になります！
-                                # そのままモディファイアとして使う
-                                current_llm_reward = llm_modifier
-                                
-                            # 現在の区間報酬が0でなければ加算して上書き
-                            if current_llm_reward != 0.0:
-                                t = list(self.buffer[i])
-                                # Env報酬に、LLMが考えた増減値を「加算」するだけ
-                                t[2] += current_llm_reward  
-                                self.buffer[i] = tuple(t)
+                        # 小数点以下を丸めて見やすくする
+                        speed = round(raw_info["speed"], 1)
+                        limit = round(raw_info["limit"], 1)
+                        distance = round(raw_info["distance"], 2)
+                        rem_time = round(raw_info["rem_time"], 1)
+                        hold_time = round(raw_info["hold_time"], 1)
+                        f_train_dist = round(raw_info["f_train_dist"], 2)
+                        grad = round(raw_info["gradient"], 1)
+                        
+                        action_str = ["惰行", "加速", "減速"][t_action]
+                        
+                        # 評価対象ステップには目印の * を付ける
+                        marker = " *" if step_num == target_idx else ""
+                        
+                        # カンマ区切りで数値を並べる（超軽量化）
+                        log_text += f"{step_num},{distance},{rem_time},{speed},{limit},{grad},{f_train_dist},{hold_time},{action_str}{marker}\n"
+                    
+                    # ▼▼▼ 追加: LLMへの「相談テキスト（内部状態）」を末尾にくっつける ▼▼▼
+                    action_names = ["惰行", "加速", "減速"]
+                    log_text += f"\n\n【AIの内部状態（相談）】\n"
+                    log_text += f"対象のStep {target_idx} (*の行) において、AIは以下の価値予測（Q値）を算出しました。\n"
+                    for i, q in enumerate(target_qs):
+                        log_text += f"- {action_names[i]}: {q:.3f}\n"
+                    log_text += f"ご覧の通り上位のQ値の差が小さく、AIは「どの行動が最適か」迷っています。\n"
+                    log_text += "物理法則や前後の文脈を考慮し、この状況で最も人間らしく、路線全体や走行パターンを考えてより効率的な運転をするための行動はどれなのか、明確な理由とともに評価・指導を行ってください。\n"
+                    # ▲▲▲ 追加ここまで ▲▲▲
 
-        # -------------------------------------------------------------
+                    # API呼び出し
+                    print(f"[Actor {self.pid}] ローカルLLM評価中... (対象Step: {target_idx} - Q値均衡検知)")
+                    llm_result = self.evaluate_with_local_llm(log_text)
+                    llm_reward = float(llm_result.get("llm_reward", 0.0))
+                    print(f"[Actor {self.pid}] 評価完了! 追加報酬: {llm_reward} (理由: {llm_result.get('reason')})")
+                    
+                    # LLMの評価結果をファイルに保存する
+                    import json
+                    import os
+                    log_file_path = os.path.join(self.dir_name, "llm_eval.jsonl")
+                    os.makedirs(self.dir_name, exist_ok=True)
+                    
+                    with open(log_file_path, "a", encoding="utf-8") as f:
+                        log_entry = {
+                            "actor_id": self.pid,
+                            "episode": self.episode_count,
+                            "step": target_idx,
+                            "reward": llm_reward,
+                            "reason": llm_result.get('reason')
+                        }
+                        f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+                    
+                    # 人間が読む用のテキストログ保存
+                    human_log_path = os.path.join(self.dir_name, "human_readable_log.txt")
+                    with open(human_log_path, "a", encoding="utf-8") as f:
+                        f.write(f"========== Actor {self.pid} / Episode {self.episode_count} / Step {target_idx} ==========\n")
+                        f.write("【送信したプロンプト】\n")
+                        f.write(log_text) # ここはそのまま本物の改行として書き込まれます
+                        f.write(f"\n【結果】追加報酬: {llm_reward}\n")
+                        f.write(f"【理由】{llm_result.get('reason')}\n")
+                        f.write("========================================================================\n\n")
+
+                    # 対象ステップのタプルを取り出して、報酬(index=2)を上書きする
+                    target_t = self.buffer[target_idx]
+                    new_reward = target_t[2] + llm_reward
+                    
+                    # タプルは直接中身を変更できないため、新しく作り直して self.buffer に戻す
+                    self.buffer[target_idx] = (
+                        target_t[0], target_t[1], new_reward, target_t[3], 
+                        target_t[4], target_t[5], target_t[6], target_t[7], target_t[8] 
+                    )
+            # === LLM追加部分ここまで ===
+
         # -------------------------------------------------------------
         # (既存のコード) この直後に self.q_network を使ってTQ値とTD誤差(td_errors)を計算する処理が続く
         # -------------------------------------------------------------
@@ -623,7 +610,7 @@ class Tester:
                 #if (tc["fowerd_train_position_offset"] is not None):
                 #    print(f"{env.fowerd_train_position}, {env.position}, {env.forbidden_action}")
                 action,qs = self.q_network.sample_action(np.array(state)[np.newaxis,...], 0.0,env.forbidden_action)
-                next_state, reward, done = env.step(int(action))
+                next_state, reward, done = env.step(action)
                 t_state=[*t_state,*n_state,*qs,reward]
                 writer.writerow(t_state)
                 episode_rewards += reward
@@ -633,14 +620,7 @@ class Tester:
             f.close()
             plt.plot(positions, speeds, "r")
             plt.savefig(f"{dir_name}{file_name}_{ci}.png")
-            #plt.close("all")
-            
-            # ▼▼▼ 修正：メモリを完全に解放する強固な処理 ▼▼▼
-            plt.clf()          # 現在の図をクリア
-            plt.close("all")   # すべてのウィンドウを閉じる
-            gc.collect()       # メモリのゴミを強制的に回収（重要！）
-            # ▲▲▲ 修正ここまで ▲▲▲
-            
+            plt.close("all")
             ci+=1
         #return episode_rewards, file_name, full_reward
         # 報酬を純粋なfloatにキャストして返す
@@ -693,8 +673,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     # float() で包んで純粋なPython型に洗浄して渡す
     actors = [Actor.remote(pid=i, epsilon=float(epsilons[i]), dir_name=dir_name,  gamma=gamma, num_states=num_states, time_step=time_step) for i in range(num_actors)]
 
-    #replay = Replay(buffer_size=2**20, save_dir=dir_name+"replay/")
-    replay = Replay(buffer_size=2**18, save_dir=dir_name+"replay/")
+    replay = Replay(buffer_size=2**20, save_dir=dir_name+"replay/")
 
     learner = Learner.remote(num_states=num_states, time_step=time_step)
     current_weights = ray.get(learner.define_network.remote())
@@ -713,7 +692,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
         wip_actors.extend([actors[pid].rollout.remote(current_weights)])
 
     minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
-    wip_learner = [learner.update_network.remote(minibatchs)]
+    wip_learner = learner.update_network.remote(minibatchs)
     minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
     wip_tester = tester.test_play.remote(current_weights, dir_name, "0")
 
@@ -730,56 +709,63 @@ def main(num_actors, gamma, num_states, time_step=1.0):
 
     #無限ループで学習継続
     #元に戻すときはapex_gem.pyからコピーしてください。
-    # ▼▼▼ 無限ループを完全に書き換え ▼▼▼
     while True:
         actor_cycles += 1
         
-        # 1. 完了したActorを「全て」回収する
+        #Actorのロールアウトが完了するのを待ち、完了したActorからTD誤差と経験を取得してリプレイバッファに追加し、次のロールアウトを開始する。
         while True:  
             finished, wip_actors = ray.wait(wip_actors, num_returns=1, timeout=0)
-            if len(finished) > 0:
-                td_errors, transitions, pid = ray.get(finished[0])
+            if (len(finished)>0):
+                td_errors, transitions, pid= ray.get(finished[0])
                 replay.add(td_errors, transitions)
                 wip_actors.extend([actors[pid].rollout.remote(current_weights)])
+                
+                # 新しく追加されたデータの件数を加算
                 new_transitions_added += len(transitions)
-            else:
-                break
+                
+            else: break
 
-        # 2. Learnerが動いていて、完了していれば回収する
-        if len(wip_learner) > 0:
-            finished_learner, _ = ray.wait(wip_learner, timeout=0)
-            if len(finished_learner) > 0:
-                current_weights_raw, indices, td_errors, priority_correction = ray.get(finished_learner[0])
-                current_weights = ray.put(current_weights_raw)
-                replay.update_priority(indices, td_errors, priority_correction)
-                wip_learner = [] # Learnerを待機状態（空）にする
-
-        # 3. Learnerが待機状態で、かつ新しいデータが十分に溜まっていれば次をスタート
-        if len(wip_learner) == 0 and new_transitions_added >= MIN_NEW_TRANSITIONS_PER_UPDATE:
-            minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
-            wip_learner = [learner.update_network.remote(minibatchs)]
+        
+        finished_learner, _ = ray.wait([wip_learner], timeout=0)
+        
+        #Learnerのネットワーク更新が完了するのを待ち、完了したら更新された重みとTD誤差、優先度補正値を取得してリプレイバッファの優先度を更新し、
+        # 新しいミニバッチをサンプリングして次のネットワーク更新を開始する。
+        if finished_learner:
+            current_weights, indices, td_errors, priority_correction = ray.get(finished_learner[0])
+            wip_learner = learner.update_network.remote(minibatchs)
+            current_weights = ray.put(current_weights)
+            #: 優先度の更新とminibatchの作成はlearnerよりも十分に速いという前提
+            replay.update_priority(indices, td_errors, priority_correction)
             
-            new_transitions_added = 0
-            beta = min(beta + 0.6 / 20000.0, 1.0)
-            update_cycles += 1
-            print(f"learner {time.time()-t:.2f}s, update_cycles: {update_cycles}, beta: {beta:.4f}")
-            t = time.time()
+            # 【対策】新規データが十分に溜まっているか確認
+            if new_transitions_added >= MIN_NEW_TRANSITIONS_PER_UPDATE:
+            
+                minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
+                beta=min(beta+0.6/20000.0,1.0)
+                update_cycles += 1
+                actor_cycles = 0
+                print(f"learner {time.time()-t}, update_cycles: {update_cycles}, beta: {beta}")
+                t=time.time()
 
-            if update_cycles % 50 == 0:
-                test_score, file_name, full_rewoard = ray.get(wip_tester)
-                print(file_name, test_score, beta)
-                history.append((update_cycles , test_score))
-                with open(dir_name + "history.csv", "a", newline="") as f:
-                    writer = csv.writer(f)
-                    writer.writerow((file_name , test_score))
-                with open(dir_name + "history_f.csv", "a", newline="") as f:
-                    writer = csv.writer(f)
-                    writer.writerow((file_name , full_rewoard))
-                wip_tester = tester.test_play.remote(current_weights, dir_name, str(update_cycles))
-                sys.stdout.flush()
-
-        # 空回りによるCPU100%消費を防ぐ微小スリープ
-        time.sleep(0.01)
+                if update_cycles % 50 == 0:
+                    test_score, file_name, full_rewoard = ray.get(wip_tester)
+                    print(file_name, test_score, beta)
+                    history.append((update_cycles , test_score))
+                    with open(dir_name + "history.csv", "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow((file_name , test_score))
+                    with open(dir_name + "history_f.csv", "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow((file_name , full_rewoard))
+                    wip_tester = tester.test_play.remote(current_weights, dir_name, str(update_cycles))
+                    sys.stdout.flush()
+            else:
+                # 溜まっていない場合は、すぐに次の計算を始めず、
+                # もう一度 completed_learner の結果だけを dummy として wip_learner に入れてループを回すか、
+                # ほんの少しだけスリープを入れてCPU負荷を下げる
+                time.sleep(0.1)
+                # 次のループで再度 finished_learner を捕捉できるように、再セットしておく
+                wip_learner = ray.put((ray.get(current_weights), indices, td_errors, priority_correction))
 
 
 if __name__ == "__main__":
