@@ -24,8 +24,8 @@ google-auth-oauthlib==1.3.1
 google-generativeai==0.8.6
 google-pasta==0.2.0
 googleapis-common-protos==1.74.0
-grpcio==1.80.0
-grpcio-status==1.71.2
+grpcio
+grpcio-status
 h11==0.16.0
 h5py==3.16.0
 httpcore==1.0.9
@@ -33,6 +33,7 @@ httplib2==0.31.2
 httpx==0.28.1
 idna==3.11
 jiter==0.14.0
+joblib
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 keras==2.15.0
@@ -63,7 +64,7 @@ packaging==26.0
 pandas==3.0.2
 pillow==12.2.0
 proto-plus==1.27.2
-protobuf==5.29.6
+protobuf>=4.25.8,<5.0.0
 pyasn1==0.6.3
 pyasn1-modules==0.4.2
 pycparser==3.0
@@ -77,6 +78,7 @@ referencing==0.37.0
 requests==2.33.1
 requests-oauthlib==2.0.0
 rpds-py==0.30.0
+scikit-learn
 segment-tree==0.3.2
 setuptools==82.0.1
 six==1.17.0
