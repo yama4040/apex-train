@@ -24,10 +24,6 @@ from actions import Actions
 import random
 import sys
 
-import psutil  # ← 【追加】メモリ使用量を取得するためのライブラリ
-import gc
-import ctypes  # ← 【追加】C言語のライブラリを呼び出すための標準モジュール
-
 tf.config.set_visible_devices([], "GPU")
 
 #このクラスがRayによって別プロセスとして非同期に実行
@@ -115,21 +111,6 @@ class Actor:
     @property
     def gamma(self):
         return self.__gamma**(self.env.time_step/self.time_step)
-    
-    def get_memory(self):
-        return {
-            "pid": self.pid,
-            "memory_gb":
-                psutil.Process(os.getpid()).memory_info().rss
-                / 1024**3,
-            "gc_objects": len(gc.get_objects()),
-             "buffer_len": len(self.buffer),
-             "tensor_count":
-            len([
-                x for x in gc.get_objects()
-                if isinstance(x, tf.Tensor)
-            ])
-        }
 
 #このクラスは経験リプレイバッファを管理し、優先度付き経験リプレイのサンプリングと優先度の更新を行う
 class Replay:
@@ -315,22 +296,43 @@ class Tester:
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
             writer = csv.writer(f)
             
+            # ▼【追加】データの列が何を表しているか分かりやすいようにヘッダーを書き込む
+            header = [
+                # raw_state (7次元)
+                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time", "raw_pre_action", "raw_stat_dist2", "raw_fw_dist",
+                # normalized_state (9次元)
+                "norm_speed", "norm_stat_dist", "norm_stat_dist_clip", "norm_rem_time", "norm_hold_time", 
+                "norm_pre_act_c", "norm_pre_act_a", "norm_pre_act_d", "norm_fw_dist",
+                # Q-values (3次元) & 合計Reward
+                "Q_coast", "Q_accel", "Q_decel", "total_reward",
+                # Tri-Drive Info (6次元)
+                "w_surv", "R_surv", "w_conf", "R_conf", "w_comp", "R_comp"
+            ]
+            writer.writerow(header)
+            
             #エピソードの実行とデータの記録
             while not done:
                 speeds.append(env.speed)
                 positions.append(env.position)
                 t_state = env.raw_state
                 n_state=env.normalized_state
-                #if (tc["fowerd_train_position_offset"] is not None):
-                #    print(f"{env.fowerd_train_position}, {env.position}, {env.forbidden_action}")
                 action,qs = self.q_network.sample_action(np.array(state)[np.newaxis,...], 0.0,env.forbidden_action)
+                
                 next_state, reward, done = env.step(action)
-                t_state=[*t_state,*n_state,*qs,reward]
+                
+                # ▼【追加】environmentからTri-Driveの重みと値を取得
+                tri_drive_info = env.latest_rewards_info
+                
+                # ▼【変更】出力リストの末尾に tri_drive_info を結合して書き込む
+                t_state=[*t_state, *n_state, *qs, reward, *tri_drive_info]
                 writer.writerow(t_state)
+                
                 episode_rewards += reward
                 if ci==0: full_reward=reward
                 state = next_state
-            writer.writerow([*env.raw_state,*env.normalized_state])
+            
+            # 終了時の状態書き込み（必要であればここにも追加できますが、通常は最後のステップだけでOKです）
+            # writer.writerow([*env.raw_state,*env.normalized_state])
             f.close()
             plt.plot(positions, speeds, "r")
             plt.savefig(f"{dir_name}{file_name}_{ci}.png")
@@ -431,20 +433,6 @@ def main(num_actors, gamma, num_states, time_step=1.0):
 
             if update_cycles % 50 == 0:
                 test_score, file_name, full_rewoard = ray.get(wip_tester)
-                # システム全体のメモリ使用量をチェックして見やすく表示
-                mem = psutil.virtual_memory()
-                used_gb = (mem.total - mem.available) / (1024**3)
-                total_gb = mem.total / (1024**3)
-                print(f"==== [System Memory] 使用率: {mem.percent}% ({used_gb:.2f} GB / {total_gb:.2f} GB) ====")
-                process = psutil.Process(os.getpid())
-
-                print(
-                    "[Driver]",
-                    process.memory_info().rss / 1024**3
-                )
-                for actor in actors:
-                    print(ray.get(actor.get_memory.remote()))
-                    
                 print(file_name, test_score, beta)
                 history.append((update_cycles , test_score))
                 with open(dir_name + "history.csv", "a", newline="") as f:
@@ -459,4 +447,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
 
 if __name__ == "__main__":
     #main(num_actors=50, gamma=0.9975, num_states=9, time_step=1.0)
-    main(num_actors=15, gamma=0.9975, num_states=9, time_step=1.0)
+    main(num_actors=5, gamma=0.9975, num_states=9, time_step=1.0)

@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 import re
 
-EPOCHS = 100
+EPOCHS = 500
 BATCH_SIZE = 32
 
 def extract_limit_info(text):
