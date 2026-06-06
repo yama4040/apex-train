@@ -12,7 +12,7 @@ class DirectRewardPredictor:
             self.is_loaded = True
             
             # 環境のstep毎に呼ばれるため静的グラフ化が必須
-            @tf.function(reduce_retracing=True)
+            @tf.function(input_signature=[tf.TensorSpec(shape=[1, 33], dtype=tf.float32)])
             def predict_fn(x):
                 return self.model(x, training=False)
             self.predict_fn = predict_fn
@@ -29,6 +29,8 @@ class DirectRewardPredictor:
             "次駅への減速フェーズ（駅手前400m以内）"
         ]
         self.notch_categories = ["惰行中", "力行（加速）中", "ブレーキ（減速）中"]
+        # ▼ 追加: 直前のノッチカテゴリ
+        self.prev_notch_categories = ["なし（または停止）", "力行（加速）", "惰行", "ブレーキ（減速）"]
 
     def predict_reward(self, state_info):
         if not self.is_loaded:
@@ -42,12 +44,21 @@ class DirectRewardPredictor:
         hold_accel = hold_time if "力行" in notch_str else 0.0
         hold_decel = hold_time if "ブレーキ" in notch_str else 0.0
         
+        # ▼ 追加: 直前の保持時間を取得
+        prev_duration = state_info.get('prev_notch_duration', 0.0)
+        
         # 2. Phase の One-Hot ベクトル化
         phase_str = state_info.get('phase', '')
-        phase_vec = [1.0 if cat == phase_str else 0.0 for cat in self.phase_categories]
+        phase_onehot = [1.0 if cat == phase_str else 0.0 for cat in self.phase_categories]
         
-        # 3. Notch の One-Hot ベクトル化
-        notch_vec = [1.0 if cat == notch_str else 0.0 for cat in self.notch_categories]
+        
+       # 3. Notch の One-Hot ベクトル化
+        # ▼修正: notch_vec を notch_onehot に変更
+        notch_onehot = [1.0 if cat == notch_str else 0.0 for cat in self.notch_categories]
+        
+        # ▼ 追加: 直前ノッチのOne-hotベクトルを作成
+        prev_notch_onehot = [1.0 if state_info.get('prev_notch', 'なし（または停止）') == cat else 0.0 for cat in self.prev_notch_categories]
+        
         
         # 4. Limit と Gradient の抽出
         next_limit_flag, next_limit_dist, next_limit_speed = self._extract_limit_info(state_info.get('next_limit_info', ''))
@@ -58,28 +69,30 @@ class DirectRewardPredictor:
         b_exist, b_distance, b_speed = self._extract_backward_info(state_info.get('backward_info', ''))
 
         # 6. 特徴量ベクトルの結合 (28次元：学習スクリプトと完全に同じ順序)
-        feature_vector = [
+        features = [
             hold_coast, hold_accel, hold_decel,
-            float(state_info['speed_limit']),
-            float(state_info['current_speed']),
-            float(state_info['dist_to_next_station']),
-            float(state_info['time_to_next_station']),
-            float(state_info['delay']),
-            float(state_info['current_gradient']),
+            prev_duration,  # ← ここに追加
+            state_info['speed_limit'],
+            state_info['current_speed'],
+            state_info['dist_to_next_station'],
+            state_info['time_to_next_station'],
+            state_info['delay'],
+            state_info['current_gradient'],
             next_limit_flag, next_limit_dist, next_limit_speed,
             next_gradient_flag, next_gradient_dist, next_gradient_val,
             f_exist, f_distance, f_speed,
             b_exist, b_distance, b_speed
-        ] + phase_vec + notch_vec
+        ] + phase_onehot + notch_onehot + prev_notch_onehot
         
         # 7. スケーリングと推論
-        X = np.array(feature_vector, dtype=np.float32).reshape(1, -1)
+        X = np.array(features, dtype=np.float32).reshape(1, -1)
         X_scaled = self.scaler.transform(X).astype(np.float32)
         
-        predicted_tensor = self.predict_fn(X_scaled)
+        predicted_tensor = self.predict_fn(tf.convert_to_tensor(X_scaled, dtype=tf.float32))
         
         raw_reward = float(predicted_tensor.numpy()[0][0])
         rounded_reward = round(raw_reward * 10) / 10.0
+        del predicted_tensor, X, X_scaled
         
         return rounded_reward
 

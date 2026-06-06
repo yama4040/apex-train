@@ -13,8 +13,9 @@ except ImportError:
     DirectRewardPredictor = None
 
 class Environment:
-    def __init__(self, time_step=1.0):
+    def __init__(self, time_step=1.0, load_reward_predictor=True):
         self.__time_step = time_step
+        self._csv_cache = {}
         self.MAX_SECTIONS = 6
         self.MAX_CURVES = 4
         self.MAX_GRADES = 8
@@ -25,6 +26,12 @@ class Environment:
             
         # LLM直接報酬予測モデルの初期化（プロセス毎に1度だけ）
         self.reward_predictor = DirectRewardPredictor() if DirectRewardPredictor else None
+        
+        # ▼フラグがTrueの時だけモデルを初期化する
+        if load_reward_predictor and DirectRewardPredictor:
+            self.reward_predictor = DirectRewardPredictor()
+        else:
+            self.reward_predictor = None
         
         # 分析・CSV記録用の変数
         self.last_llm_reward = 0.0
@@ -48,7 +55,12 @@ class Environment:
                 elif (ftc["action"][i] == "Actions.acceleration"): action = Actions.acceleration
                 elif (ftc["action"][i] == "Actions.deceleration"): action = Actions.deceleration
                 self.fowerd_train_controls.append({"time": i, "position": ftc["position"][i], "speed": ftc["speed"][i], "action": action})
-            self.fowerd_train = Train(self.arrival_station["position"], fowerd_train_controls[0]["position"], self.fowerd_train_controls[0]["speed"], 1.0)
+            # ▼【変更】リストが空でない（データが1行以上ある）場合のみ初期化する
+            if len(self.fowerd_train_controls) > 0:
+                self.fowerd_train = Train(self.arrival_station["position"], self.fowerd_train_controls[0]["position"], self.fowerd_train_controls[0]["speed"], 1.0)
+            else:
+                self.fowerd_train = None
+                print(f"\n[警告] {fowerd_train_controls} にデータがありません！先行列車なしとして扱います。")
         self.fowerd_train_position_offset = fowerd_train_position_offset
         
         if (self.fowerd_train_position is not None or start_position_offset != 0.0):
@@ -63,6 +75,10 @@ class Environment:
                 
         self.pre_action = Actions.deceleration  
         self.holding_time = 30  
+        # ▼▼▼ 新規追加: 直前のノッチ操作と保持時間の初期化 ▼▼▼
+        self.prev_notch = None # 初期状態
+        self.prev_notch_duration = 0.0
+        # ▲▲▲ 新規追加 ▲▲▲
         self.last_llm_reward = 0.0
         
         return self.normalized_state
@@ -79,8 +95,26 @@ class Environment:
         self.train.step(action_enum, time_step)
         self.t += time_step
         
-        # ▼【追加】「いま選択した行動」による保持時間を事前計算してLLMネットワークに渡す
+       # ▼▼▼ 追加: LLMへ渡すための「事前計算」 ▼▼▼
         current_holding_time = self.holding_time + time_step if self.pre_action == action_enum else time_step
+        
+        # 実際にLLMに渡す段階での「直前のノッチ情報」を整理
+        if self.pre_action != action_enum:
+            # まさに今ノッチが切り替わった瞬間なら、これまでの行動が「直前のノッチ」になる
+            current_prev_notch = self.pre_action
+            current_prev_duration = self.holding_time
+        else:
+            # 切り替わっていなければ、保持している「直前のノッチ」をそのまま使う
+            current_prev_notch = self.prev_notch
+            current_prev_duration = self.prev_notch_duration
+            
+        def get_prev_notch_str(act):
+            if act is None: return "なし（または停止）"
+            if act == Actions.acceleration: return "力行（加速）"
+            elif act == Actions.deceleration: return "ブレーキ（減速）"
+            elif act == Actions.coasting: return "惰行"
+            return "なし（または停止）"
+        # ▲▲▲ 追加 ▲▲▲
         
        # --- 1. LLMによる評価値 (スコア) の推論 ---
         llm_reward = 0.0
@@ -99,6 +133,10 @@ class Environment:
                 'dist_to_next_station': self.station_remaining_distance,
                 'time_to_next_station': self.remaining_time,  
                 'holding_time': current_holding_time, 
+                # ▼▼▼ 追加 ▼▼▼
+                'prev_notch': get_prev_notch_str(current_prev_notch),
+                'prev_notch_duration': current_prev_duration,
+                # ▲▲▲ 追加 ▲▲▲
                 'delay': max(0.0, self.t - self.fixed_running_time),
                 'current_gradient': self.train.front_grades[0]["grade"] if len(self.train.front_grades) > 0 else 0.0,
                 'phase': self._get_current_phase_str(),
@@ -153,12 +191,16 @@ class Environment:
         if self.fowerd_train_position is not None and self.speed<=0 and self.position>=self.fowerd_train_position-0.1:
             done=True
         
-        # アクション保持時間の更新
+        # ▼▼▼ 変更: アクション保持時間の更新と直前ノッチの保存 ▼▼▼
         if self.pre_action == action_enum:
             self.holding_time += time_step
         else:
+            # ノッチが切り替わった場合、これまでの操作を「直前」として退避
+            self.prev_notch = self.pre_action
+            self.prev_notch_duration = self.holding_time
             self.holding_time = time_step
         self.pre_action = action_enum
+        # ▲▲▲ 変更 ▲▲▲
         
 
         return self.normalized_state, reward, done
@@ -295,5 +337,9 @@ class Environment:
             return self.__time_step * 0.1
 
     def read_csv(self, path):
+        if path in self._csv_cache:
+            return self._csv_cache[path]
         with codecs.open(path, "r", "utf-8", "ignore") as f:
-            return pd.read_csv(f)
+            csv = pd.read_csv(f)
+        self._csv_cache[path] = csv
+        return csv

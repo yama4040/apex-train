@@ -75,7 +75,9 @@ def load_and_preprocess_data(csv_dir):
     print(f"{len(csv_files)}個のCSVファイルを読み込みます...")
     
     # 1. カラムに holding_time と time_to_next_station を両方含む完全な構成
-    columns = ["time", "train_id", "phase", "current_notch", "holding_time", "speed_limit", "current_speed", 
+    columns = ["time", "train_id", "phase", "current_notch", "holding_time", 
+               "prev_notch", "prev_notch_duration", 
+               "speed_limit", "current_speed", 
                "dist_to_next_station", "time_to_next_station", "delay", "current_gradient", 
                "next_limit_info", "next_gradient_info", "forward_info", "backward_info", "reward", "reason"]
     
@@ -95,9 +97,16 @@ def load_and_preprocess_data(csv_dir):
     ]
     notch_categories = ["惰行中", "力行（加速）中", "ブレーキ（減速）中"]
     
+    # ▼▼▼ 追加: 直前のノッチのカテゴリ ▼▼▼
+    prev_notch_categories = ["なし（または停止）", "力行（加速）", "惰行", "ブレーキ（減速）"]
+    # ▲▲▲ 追加 ▲▲▲
+    
     df['phase'] = pd.Categorical(df['phase'], categories=phase_categories)
     df['current_notch'] = pd.Categorical(df['current_notch'], categories=notch_categories)
-    df = pd.get_dummies(df, columns=['phase', 'current_notch'], dummy_na=False)
+    df['prev_notch'] = pd.Categorical(df['prev_notch'], categories=prev_notch_categories) # 追加
+    
+    # ▼ 変更: prev_notch もダミー変数化に含める
+    df = pd.get_dummies(df, columns=['phase', 'current_notch', 'prev_notch'], dummy_na=False)
     
     # 2. 保持時間を「惰行」「加速」「減速」の3つの独立した特徴量に分離する（交差特徴量）
     df['hold_coast'] = df['holding_time'] * df['current_notch_惰行中']
@@ -121,13 +130,13 @@ def load_and_preprocess_data(csv_dir):
     # 3. 最終的な特徴量ベクトル（22次元）の構築
     feature_cols = [
         'hold_coast', 'hold_accel', 'hold_decel', 
+        'prev_notch_duration',  # ←【追加】直前の保持時間
         'speed_limit', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'delay', 'current_gradient',
         'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
         'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
-        # ▼▼▼ 追加：先行列車・後続列車の特徴量（計6次元） ▼▼▼
         'f_exist', 'f_distance', 'f_speed',
         'b_exist', 'b_distance', 'b_speed'
-    ] + [col for col in df.columns if 'phase_' in col or 'current_notch_' in col]
+    ] + [col for col in df.columns if col.startswith('phase_') or col.startswith('current_notch_') or (col.startswith('prev_notch_') and col != 'prev_notch_duration')]
     
     X = df[feature_cols].values.astype(np.float32)
     y = df['reward'].values.astype(np.float32).reshape(-1, 1)

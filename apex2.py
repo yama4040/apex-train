@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import csv
 import psutil  # ← 【追加】メモリ使用量を取得するためのライブラリ
 import gc
+from collections import deque
 import ctypes  # ← 【追加】C言語のライブラリを呼び出すための標準モジュール
 
 # Ray の起動待機時間を延長
@@ -33,6 +34,26 @@ import random
 import sys
 
 tf.config.set_visible_devices([], "GPU")
+
+
+def free_ray_refs(*refs):
+    flat_refs = []
+    for ref in refs:
+        if ref is None:
+            continue
+        if isinstance(ref, (list, tuple, set)):
+            flat_refs.extend(x for x in ref if x is not None)
+        else:
+            flat_refs.append(ref)
+    if not flat_refs:
+        return
+    try:
+        ray._private.internal_api.free(flat_refs, local_only=False)
+    except Exception:
+        try:
+            ray.internal.free(flat_refs)
+        except Exception:
+            pass
 
 #このクラスがRayによって別プロセスとして非同期に実行
 @ray.remote
@@ -103,6 +124,7 @@ class Actor:
             # ▼【大改修1】sample_action()を使わず、Numpyで行動選択して Tensorの流出を完全に防ぐ
             state_tensor = tf.convert_to_tensor(np.array(state)[np.newaxis,...], dtype=tf.float32)
             qs = self.predict_q_batch(state_tensor).numpy()[0]
+            del state_tensor
             forbidden = self.env.forbidden_action
             
             if random.random() < self.epsilon:
@@ -137,12 +159,13 @@ class Actor:
         for i in range(0, len(states), chunk_size):
             next_chunk = tf.convert_to_tensor(next_states[i:i+chunk_size], dtype=tf.float32)
             curr_chunk = tf.convert_to_tensor(states[i:i+chunk_size], dtype=tf.float32)
-            next_qvalues_list.append(self.predict_q_batch(next_chunk))
-            qvalues_list.append(self.predict_q_batch(curr_chunk))
+            next_qvalues_list.append(self.predict_q_batch(next_chunk).numpy())
+            qvalues_list.append(self.predict_q_batch(curr_chunk).numpy())
+            del next_chunk, curr_chunk
             
         # ▼【大改修2】推論結果をNumpy配列に変換し、TD誤差計算を「全てNumpy」で行う（TF Eagerのメモリ断片化を防止）
-        next_qvalues = tf.concat(next_qvalues_list, axis=0).numpy()
-        qvalues = tf.concat(qvalues_list, axis=0).numpy()
+        next_qvalues = np.concatenate(next_qvalues_list, axis=0)
+        qvalues = np.concatenate(qvalues_list, axis=0)
         
         next_qvalues = next_qvalues + (next_forbidden_actions * -1.0 * (10**12))  
         next_actions = np.argmax(next_qvalues, axis=1)   
@@ -156,8 +179,12 @@ class Actor:
         td_errors = (TQ - Q).flatten()
         transitions = self.buffer
         self.buffer = []
+        del states, actions, rewards, next_states, dones, next_forbidden_actions, gammas
+        del next_qvalues_list, qvalues_list, next_qvalues, qvalues
+        del next_actions, next_actions_onehot, next_maxQ, TQ, actions_onehot, Q
         
         try:
+            gc.collect()
             ctypes.CDLL("libc.so.6").malloc_trim(0)
         except Exception:
             pass
@@ -255,7 +282,8 @@ class Learner:
 
     #ネットワークの定義と初期化
     def define_network(self):
-        env = Environment(self.time_step)
+        # ▼フラグを False にして不要なモデルロードを回避
+        env = Environment(self.time_step, load_reward_predictor=False)
         state = env.reset(11,0.0)
         self.q_network(np.atleast_2d(state))
         #if (self.init_weight is not None):self.q_network.load_weights(self.init_weight)
@@ -289,21 +317,34 @@ class Learner:
             next_maxQ = tf.reduce_sum(next_qvalues * next_actions_onehot, axis=1, keepdims=True)
             TQ = rewards + gammas * (1 - dones) * next_maxQ
 
+            # ▼▼▼ 修正: weights の形状を (バッチサイズ, 1) に変換してブロードキャストを防ぐ ▼▼▼
+            weights_t = tf.convert_to_tensor(np.asarray(weights, dtype=np.float32).reshape(-1, 1))
+
             with tf.GradientTape() as tape:
                 qvalues = self.q_network(states)
                 actions_onehot = tf.one_hot(actions, len(Actions))
                 Q = tf.reduce_sum(qvalues * actions_onehot, axis=1, keepdims=True)
-                td_errors = tf.square(TQ - Q)   #TD誤差の二乗を計算（損失関数として使用）
-                loss = tf.reduce_mean(weights * td_errors)  #重要度サンプリングの重みを掛けたTD誤差の平均を損失関数とすることで、優先度付き経験リプレイのバイアスを補正する
+                
+                # ▼▼▼ 修正: TD誤差（生）と損失用（二乗）を分離 ▼▼▼
+                td_delta = TQ - Q
+                td_errors = tf.square(td_delta) 
+                
+                # ここで (512, 1) * (512, 1) となり、正しく要素ごとの積になる
+                loss = tf.reduce_mean(weights_t * td_errors)  
 
-            grads = tape.gradient(loss, self.q_network.trainable_variables) #損失関数に対するネットワークの重みの勾配を計算
-            grads, _ = tf.clip_by_global_norm(grads, 10.0)  #勾配のクリッピングを行うことで、勾配爆発を防止する
-            self.optimizer.apply_gradients(zip(grads, self.q_network.trainable_variables))  #ネットワークの重みを更新
+            grads = tape.gradient(loss, self.q_network.trainable_variables)
+            grads, _ = tf.clip_by_global_norm(grads, 10.0) 
+            self.optimizer.apply_gradients(zip(grads, self.q_network.trainable_variables))
             
             #更新された重みとTD誤差、優先度補正値を返すために、各ミニバッチの結果をリストに追加
             indices_all += indices
-            td_errors_all += td_errors.numpy().flatten().tolist()
-            priority_correction_all+=priority_correction.flatten().tolist()
+            # ▼▼▼ 修正: 優先度の更新には生のTD誤差（td_delta）を返す ▼▼▼
+            td_errors_all += td_delta.numpy().flatten().tolist()
+            priority_correction_all += priority_correction.flatten().tolist()
+            del states, actions, rewards, next_states, dones, next_forbidden_actions, gammas
+            del priority_correction, next_qvalues, next_actions, next_actions_onehot, next_maxQ, TQ
+            del qvalues, actions_onehot, Q, td_errors, loss, grads
+            del indices, weights, transitions
 
         current_weights = self.q_network.get_weights()
         self.target_q_network.set_weights(current_weights)
@@ -374,7 +415,8 @@ class Tester:
             plt.plot([env.departure_station["position"], env.arrival_station["position"]], [0, 0], "k-", lw=3)
             plt.plot([env.departure_station["position"], env.departure_station["position"]], [0, 100], "k-", lw=3)
             plt.plot([env.arrival_station["position"], env.arrival_station["position"]], [0, 100], "k-", lw=3)
-            if (tc["fowerd_train_position_offset"] is not None):
+           # ▼【変更】テストケースの辞書ではなく、環境(env)に先行列車がいるかどうかで判定する
+            if env.fowerd_train_position is not None:
                 plt.plot([env.fowerd_train_position, env.fowerd_train_position], [0, 100], "k-", lw=3)
             sec_start = env.position
             front_sections=env.train.front_sections
@@ -512,7 +554,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     os.makedirs(dir_name + "replay/", exist_ok=True)
     
     ray.init()
-    history = []
+    history = deque(maxlen=1000)
     
     #各Actorの探索率を0.001から0.4まで線形に変化させた配列を作成。
     #これにより、異なるActorが異なる程度の探索を行うようになり，学習の初期段階では多くの探索が行われ、後半ではより安定した行動選択が促される。
@@ -524,8 +566,11 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     replay = Replay(buffer_size=2**17, save_dir=dir_name+"replay/")
 
     learner = Learner.remote(num_states=num_states, time_step=time_step)
-    current_weights = ray.get(learner.define_network.remote())
+    define_ref = learner.define_network.remote()
+    current_weights = ray.get(define_ref)
+    free_ray_refs(define_ref)
     current_weights = ray.put(current_weights)
+    old_weight_refs = deque()
 
     tester = Tester.remote(num_states, time_step)
 
@@ -535,8 +580,11 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     #この初期の経験が学習の開始に必要な多様なデータを提供する。
     for _ in range(30):
         finished, wip_actors = ray.wait(wip_actors, num_returns=1)
-        td_errors, transitions, pid = ray.get(finished[0])
+        result_ref = finished[0]
+        td_errors, transitions, pid = ray.get(result_ref)
         replay.add(td_errors, transitions)
+        free_ray_refs(result_ref)
+        del td_errors, transitions
         wip_actors.extend([actors[pid].rollout.remote(current_weights)])
         # ▼ このような行を追加して、ターミナルに進捗を表示させる
         #print(f"現在データ収集（ウォームアップ）中... バッファ数: {replay.tree.n_entries}")
@@ -559,8 +607,11 @@ def main(num_actors, gamma, num_states, time_step=1.0):
         while True:  
             finished, wip_actors = ray.wait(wip_actors, num_returns=1, timeout=0)
             if (len(finished)>0):
-                td_errors, transitions, pid= ray.get(finished[0])
+                result_ref = finished[0]
+                td_errors, transitions, pid= ray.get(result_ref)
                 replay.add(td_errors, transitions)
+                free_ray_refs(result_ref)
+                del td_errors, transitions
                 wip_actors.extend([actors[pid].rollout.remote(current_weights)])
             else: break
 
@@ -570,11 +621,18 @@ def main(num_actors, gamma, num_states, time_step=1.0):
         #Learnerのネットワーク更新が完了するのを待ち、完了したら更新された重みとTD誤差、優先度補正値を取得してリプレイバッファの優先度を更新し、
         # 新しいミニバッチをサンプリングして次のネットワーク更新を開始する。
         if finished_learner:
-            current_weights, indices, td_errors, priority_correction = ray.get(finished_learner[0])
+            learner_ref = finished_learner[0]
+            new_weights, indices, td_errors, priority_correction = ray.get(learner_ref)
+            free_ray_refs(learner_ref)
             wip_learner = learner.update_network.remote(minibatchs)
-            current_weights = ray.put(current_weights)
+            old_weight_refs.append(current_weights)
+            current_weights = ray.put(new_weights)
+            del new_weights
+            while len(old_weight_refs) > max(100, num_actors * 4):
+                free_ray_refs(old_weight_refs.popleft())
             #: 優先度の更新とminibatchの作成はlearnerよりも十分に速いという前提
             replay.update_priority(indices, td_errors, priority_correction)
+            del indices, td_errors, priority_correction
             minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
             beta=min(beta+0.6/20000.0,1.0)
             update_cycles += 1
@@ -601,10 +659,14 @@ def main(num_actors, gamma, num_states, time_step=1.0):
                     process.memory_info().rss / 1024**3
                 )
                 for actor in actors:
-                    print(ray.get(actor.get_memory.remote()))
+                    memory_ref = actor.get_memory.remote()
+                    print(ray.get(memory_ref))
+                    free_ray_refs(memory_ref)
 
                 # ▼【変更】戻り値を4つ受け取るように修正（tc0_reward を追加）
-                test_score, file_name, full_rewoard, tc0_reward = ray.get(wip_tester)
+                tester_ref = wip_tester
+                test_score, file_name, full_rewoard, tc0_reward = ray.get(tester_ref)
+                free_ray_refs(tester_ref)
                 print(file_name, test_score, beta)
                 history.append((update_cycles , test_score))
                 with open(dir_name + "history.csv", "a", newline="") as f:

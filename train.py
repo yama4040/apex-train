@@ -2,6 +2,16 @@ from actions import Actions
 from track import Track
 
 
+_SHARED_TRACK = None
+
+
+def get_shared_track():
+    global _SHARED_TRACK
+    if _SHARED_TRACK is None:
+        _SHARED_TRACK = Track()
+    return _SHARED_TRACK
+
+
 class Train(object):
     def __init__(self, target_station, position=0, speed=0,weight_correction=1.0):
         self.time_step_base=0.01
@@ -14,7 +24,7 @@ class Train(object):
         self.__speed = speed
         self.__position = position
         self.__pre_acceleration=0
-        self.track = Track()
+        self.track = get_shared_track()
 
     def set_states(self, speed, position):
         self.__speed = speed
