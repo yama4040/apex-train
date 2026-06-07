@@ -563,7 +563,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     actors = [Actor.remote(pid=i, epsilon=epsilons[i], gamma=gamma, num_states=num_states, time_step=time_step) for i in range(num_actors)]
 
     #replay = Replay(buffer_size=2**20, save_dir=dir_name+"replay/")
-    replay = Replay(buffer_size=2**17, save_dir=dir_name+"replay/")
+    replay = Replay(buffer_size=2**18, save_dir=dir_name+"replay/")
 
     learner = Learner.remote(num_states=num_states, time_step=time_step)
     define_ref = learner.define_network.remote()

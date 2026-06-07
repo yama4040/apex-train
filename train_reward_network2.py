@@ -147,7 +147,7 @@ def build_model(input_dim):
     # 4. L2正則化を用いた、汎化性能重視の軽量ネットワーク設計
     model = Sequential([
         Input(shape=(input_dim,)),
-        Dense(32, activation='relu'),
+        Dense(16, activation='relu'),
         Dropout(0.1),
         #Dense(16, activation='relu'),
         #Dropout(0.1),
