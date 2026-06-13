@@ -127,5 +127,5 @@ def evaluate_csv(csv_path, start_position, speed_limit_path):
     
 if __name__ == "__main__":
     # コマンドライン引数でファイル名を指定可能 (例: python eval.py data.csv)
-    target_csv = sys.argv[1] if len(sys.argv) > 1 else "comp/7200_0.csv"
+    target_csv = sys.argv[1] if len(sys.argv) > 1 else "comp/25650_0.csv"
     evaluate_csv(target_csv, START_POSITION, SPEED_LIMIT_CSV)

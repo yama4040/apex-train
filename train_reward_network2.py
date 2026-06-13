@@ -147,9 +147,9 @@ def build_model(input_dim):
     # 4. L2正則化を用いた、汎化性能重視の軽量ネットワーク設計
     model = Sequential([
         Input(shape=(input_dim,)),
-        Dense(16, activation='relu'),
+        Dense(64, activation='relu'),
         Dropout(0.1),
-        #Dense(16, activation='relu'),
+        Dense(32, activation='relu'),
         #Dropout(0.1),
         Dense(1, activation='sigmoid') # 0.0 ~ 1.0 の評価値を出力
     ])
@@ -195,7 +195,7 @@ def main():
     model = build_model(X_train_scaled.shape[1])
     
     # 5. 無駄な過学習を自動で停止し、最もLossが低かった瞬間の重みを採用する
-    early_stop = EarlyStopping(monitor='val_loss', patience=50, restore_best_weights=True)
+    early_stop = EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
     
     print("学習を開始します...")
     history = model.fit(

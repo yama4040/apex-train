@@ -176,6 +176,15 @@ class Environment:
         # 駅のオーバーラン判定（駅を通り過ぎてまだ走っている場合）
         if self.speed > 0.0 and self.position > self.arrival_station["position"] + 0.005:
             fail_penalty = -5.0
+            
+        # ▼▼▼ 新規追加: 駅の規定距離より手前で停止してしまった場合は強制終了 ▼▼▼
+        # ※先行列車の後ろで止まっている場合（上記の既存条件）とは切り分ける
+        if self.speed <= 0.0 and self.position < self.arrival_station["position"] - 0.01:
+            if self.fowerd_train_position is None or self.position < self.fowerd_train_position - 0.1:
+                done = True
+                # 必要に応じて「途中で止まってしまったペナルティ」を強化学習の報酬に加算することも検討してください
+                # fail_penalty = -10.0 
+        # ▲▲▲ 新規追加 ▲▲▲
 
 
         # --- 3. 最終的な報酬の合算 ---
