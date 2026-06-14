@@ -17,8 +17,8 @@ class Train(object):
         self.time_step_base=0.01
         self.DECELERATE = -2.4/10*360
         self.TRAIN_WEIGHT = 28  # 列車重量
-        #self.FACTOR_OF_INERTIA = 28.34391294  # 慣性係数]
-        self.FACTOR_OF_INERTIA = 28.34467  # 慣性係数]
+        #self.FACTOR_OF_INERTIA = 28.34391294  
+        self.FACTOR_OF_INERTIA = 28.34467  
         self.TARGET_STATION = target_station
         self.WEIGTH_CORRECTION=weight_correction
         self.__speed = speed
@@ -118,3 +118,26 @@ class Train(object):
     @property
     def resistance(self):
         return self.__get_resistance() + self.__get_run_resistance()
+
+    @property
+    def req_stop_dist(self):
+        """
+        現在の速度から最大減速を行った場合に停止するまでに必要な物理的距離[km]を算出する。
+        シミュレータ(stepメソッド)の加速度計算式と完全に一致させたバージョン。
+        """
+        if self.__speed <= 0.0:
+            return 0.0
+        
+        # train.py の step() 内の action == Actions.deceleration 時の加速度計算を完全再現
+        # force = 0 とした場合の計算式
+        accel = ((((0 - self.travel_resistance) * self.WEIGTH_CORRECTION) - (self.grade_resistance + self.curve_resistance)) / self.FACTOR_OF_INERTIA)
+        accel += self.DECELERATE * self.time_step_base * self.WEIGTH_CORRECTION
+        
+        # 加速してしまう異常状態の防止（万が一の下り急勾配など）
+        if accel >= 0:
+            accel = -0.0001
+            
+        # 等加速度直線運動の公式から停止距離(km)を算出 (3600は km/h と 時間[s] の単位合わせ)
+        dist_km = (self.__speed ** 2) / (2.0 * abs(accel) * 3600.0)
+        
+        return dist_km

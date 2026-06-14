@@ -74,11 +74,11 @@ def load_and_preprocess_data(csv_dir):
     
     print(f"{len(csv_files)}個のCSVファイルを読み込みます...")
     
-    # 1. カラムに holding_time と time_to_next_station を両方含む完全な構成
+    # 【変更箇所①】ヘッダに req_stop_dist を追加
     columns = ["time", "train_id", "phase", "current_notch", "holding_time", 
                "prev_notch", "prev_notch_duration", 
                "speed_limit", "current_speed", 
-               "dist_to_next_station", "time_to_next_station", "delay", "current_gradient", 
+               "dist_to_next_station", "time_to_next_station", "req_stop_dist", "delay", "current_gradient", 
                "next_limit_info", "next_gradient_info", "forward_info", "backward_info", "reward", "reason"]
     
     df_list = []
@@ -89,26 +89,30 @@ def load_and_preprocess_data(csv_dir):
     df = pd.concat(df_list, ignore_index=True)
     print(f"合計データ数: {len(df)}行")
     
+    # ▼▼▼【今回追加】データセットの表記・追加行動の置換前処理 ▼▼▼
+    # DQNの3つの行動空間[力行, 惰行, ブレーキ]に集約するため、停止系の状態をブレーキに統合します
+    df['prev_notch'] = df['prev_notch'].replace('なし（または停止）', 'ブレーキ（減速）')
+    df['current_notch'] = df['current_notch'].replace('停止・その他', 'ブレーキ（減速）中')
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+    
+    # 【変更箇所②】フェーズに「駅停車完了（速度0km/h）」を追加
     phase_categories = [
         "駅出発直後の加速フェーズ（20秒以内）", 
         "巡航フェーズ（駅間走行中）", 
         "制限速度区間に接近中（500m以内に制限区間在り）", 
-        "次駅への減速フェーズ（駅手前400m以内）"
+        "次駅への減速フェーズ（駅手前400m以内）",
+        "駅停車完了（速度0km/h）"
     ]
     notch_categories = ["惰行中", "力行（加速）中", "ブレーキ（減速）中"]
-    
-    # ▼▼▼ 追加: 直前のノッチのカテゴリ ▼▼▼
-    prev_notch_categories = ["なし（または停止）", "力行（加速）", "惰行", "ブレーキ（減速）"]
-    # ▲▲▲ 追加 ▲▲▲
+    # 前のノッチも現在のノッチと同じ3つの状態のみに統一する
+    prev_notch_categories = ["惰行", "力行（加速）", "ブレーキ（減速）"]
     
     df['phase'] = pd.Categorical(df['phase'], categories=phase_categories)
     df['current_notch'] = pd.Categorical(df['current_notch'], categories=notch_categories)
-    df['prev_notch'] = pd.Categorical(df['prev_notch'], categories=prev_notch_categories) # 追加
+    df['prev_notch'] = pd.Categorical(df['prev_notch'], categories=prev_notch_categories)
     
-    # ▼ 変更: prev_notch もダミー変数化に含める
     df = pd.get_dummies(df, columns=['phase', 'current_notch', 'prev_notch'], dummy_na=False)
     
-    # 2. 保持時間を「惰行」「加速」「減速」の3つの独立した特徴量に分離する（交差特徴量）
     df['hold_coast'] = df['holding_time'] * df['current_notch_惰行中']
     df['hold_accel'] = df['holding_time'] * df['current_notch_力行（加速）中']
     df['hold_decel'] = df['holding_time'] * df['current_notch_ブレーキ（減速）中']
@@ -116,22 +120,19 @@ def load_and_preprocess_data(csv_dir):
     df['next_limit_flag'], df['next_limit_dist'], df['next_limit_speed'] = zip(*df['next_limit_info'].apply(extract_limit_info))
     df['next_gradient_flag'], df['next_gradient_dist'], df['next_gradient_val'] = zip(*df['next_gradient_info'].apply(extract_gradient_info))
     
-    # 先行列車情報の変換
     forward_features = df['forward_info'].apply(extract_forward_info).apply(pd.Series)
     forward_features.columns = ['f_exist', 'f_distance', 'f_speed']
     
-    # 後続列車情報の変換
     backward_features = df['backward_info'].apply(extract_backward_info).apply(pd.Series)
     backward_features.columns = ['b_exist', 'b_distance', 'b_speed']
     
-    # ▼▼▼ 追加：抽出した特徴量を元の df に横方向に結合する ▼▼▼
     df = pd.concat([df, forward_features, backward_features], axis=1)
     
-    # 3. 最終的な特徴量ベクトル（22次元）の構築
+    # 【変更箇所③】特徴量ベクトルに req_stop_dist を追加
     feature_cols = [
         'hold_coast', 'hold_accel', 'hold_decel', 
-        'prev_notch_duration',  # ←【追加】直前の保持時間
-        'speed_limit', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'delay', 'current_gradient',
+        'prev_notch_duration',
+        'speed_limit', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient',
         'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
         'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
         'f_exist', 'f_distance', 'f_speed',
@@ -147,9 +148,9 @@ def build_model(input_dim):
     # 4. L2正則化を用いた、汎化性能重視の軽量ネットワーク設計
     model = Sequential([
         Input(shape=(input_dim,)),
-        Dense(64, activation='relu'),
-        Dropout(0.1),
         Dense(32, activation='relu'),
+        Dropout(0.1),
+        Dense(16, activation='relu'),
         #Dropout(0.1),
         Dense(1, activation='sigmoid') # 0.0 ~ 1.0 の評価値を出力
     ])

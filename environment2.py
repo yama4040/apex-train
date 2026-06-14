@@ -132,6 +132,7 @@ class Environment:
                 'current_speed': self.speed,
                 'dist_to_next_station': self.station_remaining_distance,
                 'time_to_next_station': self.remaining_time,  
+                'req_stop_dist': self.train.req_stop_dist,
                 'holding_time': current_holding_time, 
                 # ▼▼▼ 追加 ▼▼▼
                 'prev_notch': get_prev_notch_str(current_prev_notch),
