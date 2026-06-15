@@ -127,25 +127,30 @@ class Environment:
             else:
                 forward_info_str = "先行列車なし"
 
+            # ▼▼▼ 追加: 欠落していた要求ブレーキ距離の計算 ▼▼▼
+            v_ms = max(0.0, self.speed / 3.6)
+            decel_ms2 = 2.5 / 3.6
+            fallback_req_dist = (v_ms ** 2) / (2 * decel_ms2) + (v_ms * self.time_step)
+            req_dist_val = fallback_req_dist
+            # ▲▲▲ 追加ここまで ▲▲▲
+
             state_info = {
                 'speed_limit': self.current_speed_limit,
                 'current_speed': self.speed,
-                'dist_to_next_station': self.station_remaining_distance,
+                'dist_to_next_station': self.station_remaining_distance * 1000.0, 
                 'time_to_next_station': self.remaining_time,  
-                'req_stop_dist': self.train.req_stop_dist,
+                'req_stop_dist': req_dist_val,  # <--- これでエラーが解消します
                 'holding_time': current_holding_time, 
-                # ▼▼▼ 追加 ▼▼▼
                 'prev_notch': get_prev_notch_str(current_prev_notch),
                 'prev_notch_duration': current_prev_duration,
-                # ▲▲▲ 追加 ▲▲▲
                 'delay': max(0.0, self.t - self.fixed_running_time),
                 'current_gradient': self.train.front_grades[0]["grade"] if len(self.train.front_grades) > 0 else 0.0,
                 'phase': self._get_current_phase_str(),
-                'notch': self._get_current_notch_str(action_enum),
+                'current_notch': self._get_current_notch_str(action_enum), 
                 'next_limit_info': self._get_next_limit_info(),
                 'next_gradient_info': self._get_next_gradient_info(),
-                'forward_info': forward_info_str, # ▼【追加】
-                'backward_info': "後続列車なし"   # ▼【追加】今回は固定値
+                'forward_info': forward_info_str, 
+                'backward_info': "後続列車なし"
             }
             try:
                 llm_reward = self.reward_predictor.predict_reward(state_info)
