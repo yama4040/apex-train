@@ -192,15 +192,15 @@ def build_model(input_dim):
     # ▼▼▼ 【完全刷新】表現力と安定性を高めたモデル設計 ▼▼▼
     model = Sequential([
         Input(shape=(input_dim,)),
-        Dense(128, activation='relu'),      # 表現力を大幅に強化
+        Dense(64, activation='relu'),      # 表現力を大幅に強化
         Dropout(0.2),                       # 過学習防止
-        Dense(64, activation='relu'),
         Dense(32, activation='relu'),
+        Dense(16, activation='relu'),
         Dense(1, activation='linear')       # sigmoidの偏り問題を排除し、linearに変更
     ])
     
     # LLMのノイズ（理不尽な評価ブレ）に強い Huber Loss を採用
-    model.compile(optimizer='adam', loss=Huber(delta=0.1), metrics=['mae', custom_accuracy])
+    model.compile(optimizer='adam', loss=Huber(delta=1.0), metrics=['mae', custom_accuracy])
     return model
 
 def plot_learning_curve(history):

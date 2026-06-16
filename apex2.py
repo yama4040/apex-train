@@ -94,22 +94,25 @@ class Actor:
         for var, weight in zip(self.q_network.variables, current_weights):
             var.assign(weight)
 
+        # ▼【変更】遅延バリエーションを削り、遅延0のファイルのみを使用
         f_train_csv_list = [
             "input/f_train_low50.csv",
             "input/f_train_delay0_stop30.csv",
-            "input/f_train_delay5_stop45.csv"
+            "input/f_train_delay0_stop45.csv",
+            "input/f_train_delay0_stop60.csv"
         ]
 
         r = random.random()
-        random_delay = random.uniform(0.0, 20.0) 
+        ego_delay = random.uniform(0.0, 20.0)  # 自列車の遅延
+        headway = random.uniform(30.0, 120.0)  # ▼【追加】先行列車との出発間隔(30~120秒)
         
         if (r < 0.4):
-            self.state = self.env.reset(11, random_delay, 1.0)
-        elif (r < 0.7):
-            self.state = self.env.reset(11, random_delay, 1.0, fowerd_train_position_offset=random.uniform(0.2, 1.5))
+            # 先行列車なし
+            self.state = self.env.reset(11, ego_delay, 1.0)
         else:
+            # 先行列車あり（位置オフセットの代わりに time_offset を渡す）
             random_csv = random.choice(f_train_csv_list)
-            self.state = self.env.reset(11, random_delay, 1.0, fowerd_train_controls=random_csv)
+            self.state = self.env.reset(11, ego_delay, 1.0, fowerd_train_time_offset=headway, fowerd_train_controls=random_csv)
             
         self.episode_rewards = 0
         done = False
@@ -342,24 +345,34 @@ class Tester:
         self.q_network.save_weights(dir_name+file_name+".weights.h5")
         episode_rewards = 0
         
+        # ▼【大改修】テストケースの再構築
         test_cases = []
-        
-        test_cases.append({"delay": 0.0, "f_train_csv": None, "desc": "Sim1_Normal"})
+        test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "desc": "Sim1_Normal"})
         for delay in [5.0, 10.0, 15.0]:
-            test_cases.append({"delay": delay, "f_train_csv": None, "desc": f"Sim2_Delay_{delay}s"})
-        test_cases.append({"delay": 0.0, "f_train_csv": "input/f_train_low50.csv", "desc": "Sim3_Low50"})
+            test_cases.append({"delay": delay, "f_train_csv": None, "headway": None, "desc": f"Sim2_Delay_{delay}s"})
+            
+        f_train_csvs = [
+            "input/f_train_low50.csv",
+            "input/f_train_delay0_stop30.csv",
+            "input/f_train_delay0_stop45.csv",
+            "input/f_train_delay0_stop60.csv"
+        ]
         
-        for f_delay in [0, 5, 10]:
-            for stop_time in [30, 45, 60]:
-                csv_path = f"input/f_train_delay{f_delay}_stop{stop_time}.csv"
-                test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "desc": f"Sim3_fDelay{f_delay}_Stop{stop_time}"})
-        full_reward=0
+        # [30, 60, 120]秒の出発間隔でテストケース作成
+        for csv_path in f_train_csvs:
+            for hw in [30.0, 60.0, 120.0]:
+                csv_name = csv_path.split("/")[-1].replace(".csv", "")
+                test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "desc": f"Sim3_HW{int(hw)}_{csv_name}"})
+
+        full_reward = 0
         tc0_cumulative_reward = 0 
-        ci=0
+        ci = 0
         
         env = self.env
+        
         for tc in test_cases:
-            state = env.reset(11, tc["delay"], 1.0, fowerd_train_controls=tc["f_train_csv"])
+            # ▼【変更】fowerd_train_time_offset として headway を渡す
+            state = env.reset(11, tc["delay"], 1.0, fowerd_train_time_offset=tc["headway"], fowerd_train_controls=tc["f_train_csv"])
             speeds = []
             positions = []
             times = []
@@ -428,36 +441,44 @@ class Tester:
                     tc0_cumulative_reward += reward
                 state = next_state
             
+            # ループを抜けた後、グラフ描画処理
             f.close()
+            
+            # 1枚目: 位置-速度グラフ (既存のまま)
             plt.plot(positions, speeds, "r-", label="Own Train")
             if len(f_positions) > 0:
                 plt.plot(f_positions, f_speeds, "b--", label="Forward Train")
             plt.legend(loc="upper right")
             plt.savefig(f"{dir_name}{file_name}_{ci}.png")
             
-
+            # ▼【改修】2枚目: 運行図表（ダイアグラム）の描画
             plt.figure(dpi=200, figsize=(10, 6))
             plt.xlabel("Time [s]")
             plt.ylabel("Position [km]")
             
-            plt.axhline(y=env.departure_station["position"], color='k', linestyle='-', lw=2)
-            plt.axhline(y=env.arrival_station["position"], color='k', linestyle='-', lw=2)
+            hakuto_pos = 23.29 # 白兎駅の位置
+            
+            plt.axhline(y=env.departure_station["position"], color='k', linestyle='-', lw=2, label="Uzen-Narita")
+            plt.axhline(y=hakuto_pos, color='g', linestyle='--', lw=2, label="Hakuto")
+            plt.axhline(y=env.arrival_station["position"], color='k', linestyle='-', lw=2, label="Target")
             
             plt.plot(times, positions, "r-", label="Own Train")
             
             if len(f_positions) > 0:
+                # 横軸は環境内時間 (env.t) なので、そのままプロットすれば自列車の t=0 時点で
+                # 先行列車が少し先にいる状態が正しく表現されます。
                 plt.plot(f_times, f_positions, "b--", label="Forward Train")
             
-            plt.ylim(env.departure_station["position"] - 0.05, env.arrival_station["position"] + 0.1)
+            # ▼【変更】Y軸を「羽前成田」から「白兎+0.1km」の範囲に限定
+            plt.ylim(env.departure_station["position"] - 0.05, hakuto_pos + 0.1)
             
             plt.legend(loc="lower right")
             plt.grid(True)
             
             plt.savefig(f"{dir_name}{file_name}_{ci}_diagram.png")
-            
             plt.close('all')
             
-            ci+=1
+            ci += 1
             
         try:
             gc.collect()

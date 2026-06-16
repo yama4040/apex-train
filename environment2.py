@@ -36,7 +36,9 @@ class Environment:
         # 分析・CSV記録用の変数
         self.last_llm_reward = 0.0
 
-    def reset(self, departure_index=None, delay=0.0, weight_correction=1.0, fowerd_train_position_offset=None, start_position_offset=0.0, fowerd_train_controls=None):
+    # 変更前: def reset(self, departure_index=None, delay=0.0, weight_correction=1.0, fowerd_train_position_offset=None, start_position_offset=0.0, fowerd_train_controls=None):
+    # ▼変更後
+    def reset(self, departure_index=None, delay=0.0, weight_correction=1.0, fowerd_train_time_offset=None, start_position_offset=0.0, fowerd_train_controls=None):
         if departure_index is None:
             departure_index = random.randrange(1)
         self.t = 0.0
@@ -45,6 +47,7 @@ class Environment:
         start_position = self.departure_station["position"] + start_position_offset
         self.train = Train(self.arrival_station["position"], start_position, 0.0, weight_correction)
         self.fowerd_train = None
+        self.fowerd_train_time_offset = fowerd_train_time_offset  # 追加
         
         if (fowerd_train_controls): 
             ftc = self.read_csv(fowerd_train_controls)
@@ -55,13 +58,22 @@ class Environment:
                 elif (ftc["action"][i] == "Actions.acceleration"): action = Actions.acceleration
                 elif (ftc["action"][i] == "Actions.deceleration"): action = Actions.deceleration
                 self.fowerd_train_controls.append({"time": i, "position": ftc["position"][i], "speed": ftc["speed"][i], "action": action})
-            # ▼【変更】リストが空でない（データが1行以上ある）場合のみ初期化する
-            if len(self.fowerd_train_controls) > 0:
-                self.fowerd_train = Train(self.arrival_station["position"], self.fowerd_train_controls[0]["position"], self.fowerd_train_controls[0]["speed"], 1.0)
+            
+            # ▼【変更】時間オフセット(headway)に基づいて初期位置を割り出す
+            if len(self.fowerd_train_controls) > 0 and self.fowerd_train_time_offset is not None:
+                # CSVインデックス（経過秒数）の計算。最大値を超えないように制限
+                start_idx = min(int(self.fowerd_train_time_offset), len(self.fowerd_train_controls) - 1)
+                
+                self.fowerd_train = Train(
+                    self.arrival_station["position"], 
+                    self.fowerd_train_controls[start_idx]["position"], 
+                    self.fowerd_train_controls[start_idx]["speed"], 
+                    1.0
+                )
             else:
                 self.fowerd_train = None
-                print(f"\n[警告] {fowerd_train_controls} にデータがありません！先行列車なしとして扱います。")
-        self.fowerd_train_position_offset = fowerd_train_position_offset
+                print(f"\n[警告] {fowerd_train_controls} 先行列車なしとして扱います。")
+                
         
         if (self.fowerd_train_position is not None or start_position_offset != 0.0):
             sr_csv = self.read_csv(f"./input/sr_{departure_index}.csv")
@@ -84,9 +96,20 @@ class Environment:
         return self.normalized_state
 
     def step(self, action):
-        if (self.fowerd_train is not None and self.fowerd_train.speed <= 0.0 and self.fowerd_train.position > self.arrival_station["position"]): self.fowerd_train = None
-        if (self.fowerd_train is not None and self.t > self.fowerd_train_controls[-1]["time"]): self.fowerd_train.step(Actions.deceleration, 1)
-        elif (self.fowerd_train is not None and round(self.t % 1, 1) == 0): self.fowerd_train.step(self.fowerd_train_controls[int(self.t)]["action"], 1)
+        # 既存コード：先行列車が終点に着いたら消去
+        if (self.fowerd_train is not None and self.fowerd_train.speed <= 0.0 and self.fowerd_train.position > self.arrival_station["position"]): 
+            self.fowerd_train = None
+            
+        # ▼【変更】先行列車のアクション適用
+        if self.fowerd_train is not None:
+            # 現在の自列車時刻 ＋ 出発間隔 ＝ 先行列車の稼働時間
+            f_t = int(self.t + self.fowerd_train_time_offset)
+            
+            if f_t >= len(self.fowerd_train_controls):
+                # CSVのデータを超えたらとりあえずブレーキ
+                self.fowerd_train.step(Actions.deceleration, 1)
+            elif round(self.t % 1, 1) == 0:
+                self.fowerd_train.step(self.fowerd_train_controls[f_t]["action"], 1)
         
         action_enum = Actions(action)
         time_step = self.time_step
@@ -310,10 +333,10 @@ class Environment:
 
     @property
     def fowerd_train_position(self):
-        if (self.fowerd_train_position_offset is None and self.fowerd_train is None): return None
-        if (self.fowerd_train is None): return self.departure_station["position"] + self.fowerd_train_position_offset
-        else: return self.fowerd_train.position
-
+        if self.fowerd_train is None: 
+            return None
+        return self.fowerd_train.position
+    
     @property
     def fowerd_train_remaining_distance(self):
         if (self.fowerd_train_position is None): return self.station_remaining_distance

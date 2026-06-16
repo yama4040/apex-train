@@ -123,21 +123,42 @@ class Train(object):
     def req_stop_dist(self):
         """
         現在の速度から最大減速を行った場合に停止するまでに必要な物理的距離[km]を算出する。
-        シミュレータ(stepメソッド)の加速度計算式と完全に一致させたバージョン。
+        step() と完全に同じ0.01秒ごとの積分ロジックを用いて、走行抵抗の変化を正確に反映する。
         """
         if self.__speed <= 0.0:
             return 0.0
-        
-        # train.py の step() 内の action == Actions.deceleration 時の加速度計算を完全再現
-        # force = 0 とした場合の計算式
-        accel = ((((0 - self.travel_resistance) * self.WEIGTH_CORRECTION) - (self.grade_resistance + self.curve_resistance)) / self.FACTOR_OF_INERTIA)
-        accel += self.DECELERATE * self.time_step_base * self.WEIGTH_CORRECTION
-        
-        # 加速してしまう異常状態の防止（万が一の下り急勾配など）
-        if accel >= 0:
-            accel = -0.0001
-            
-        # 等加速度直線運動の公式から停止距離(km)を算出 (3600は km/h と 時間[s] の単位合わせ)
-        dist_km = (self.__speed ** 2) / (2.0 * abs(accel) * 3600.0)
-        
-        return dist_km
+
+        # シミュレーション用の仮想変数を準備
+        sim_speed = self.__speed
+        sim_position = 0.0  # ブレーキ開始位置からの相対距離[km]
+
+        # 勾配と曲線の抵抗（※厳密には位置が進むと変化しますが、
+        # 計算コストを抑えるためブレーキ開始地点の値を固定で使用します）
+        grade_res = self.grade_resistance
+        curve_res = self.curve_resistance
+
+        # 速度が0になるまで step() と全く同じ計算をループする
+        while sim_speed > 0:
+            # 1. 現在の速度における走行抵抗を計算（ここで速度低下に伴う抵抗減衰が反映される）
+            travel_res = 2.39 + 0.0224 * sim_speed + 0.00062 * (sim_speed**2)
+
+            # 2. シミュレータと同じ減速度の算出
+            accel = ((((0 - travel_res) * self.WEIGTH_CORRECTION) - (grade_res + curve_res)) / self.FACTOR_OF_INERTIA)
+            accel += self.DECELERATE * self.time_step_base * self.WEIGTH_CORRECTION
+
+            # 加速してしまう異常状態の防止
+            if accel >= 0:
+                accel = -0.0001
+
+            # 3. 位置と速度の更新 (stepメソッドと完全一致)
+            if sim_speed + accel * self.time_step_base >= 0:
+                sim_position += (sim_speed / 3600) * self.time_step_base + 1 * (accel / 3600) * (self.time_step_base**2)
+                sim_speed += accel * self.time_step_base
+            else:
+                # 最後の0km/hを跨ぐステップのみ、ピッタリ0になるまでの時間で距離を補正
+                t = -sim_speed / accel if accel < 0 else self.time_step_base
+                sim_position += (sim_speed / 3600) * t + 1 * (accel / 3600) * (t**2)
+                sim_speed = 0.0
+                break
+
+        return sim_position

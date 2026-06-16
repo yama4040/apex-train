@@ -8,7 +8,7 @@ from actions import Actions
 
 # ==== 設定値 ====
 # 自列車（羽前成田: 21.112km）の約360m前方に先行列車を配置
-START_POS = 22.112
+START_POS = 21.112
 TARGET_STATION = 30.605 
 # 先行列車が停車する駅の位置（白兎: 23.29km）
 STOP_STATION_POS = 23.29
@@ -35,25 +35,27 @@ def generate_forward_train_csv(filename, target_speed, delay_sec, stop_pos=None,
             # 1. 出発前の遅延（待機）フェーズ
             if t < delay_sec:
                 action = Actions.deceleration
-            
+
             # 2. 駅への停車および待機フェーズ
             elif stop_pos is not None and not has_stopped:
                 dist_to_stop = stop_pos - train.position
                 
-                # 簡易ブレーキカーブ計算 (現在の速度から減速度2.0km/h/sで止まれる距離)
-                v_ms = train.speed / 3.6
-                a_ms2 = 2.0 / 3.6
-                brake_dist_km = ((v_ms ** 2) / (2 * a_ms2)) / 1000.0
+                # train.py に実装した正確な必要停止距離を使用
+                brake_dist_km = train.req_stop_dist 
                 
-                if dist_to_stop <= 0.005 and train.speed <= 1.0:
-                    # 停止位置に到達し、ほぼ停止している場合
+                if dist_to_stop <= 0.010 and train.speed <= 1.0:
+                    # 停止位置(誤差10m以内)でほぼ停止している場合
                     action = Actions.deceleration
                     stop_timer += 1
                     if stop_timer >= stop_time_sec:
-                        has_stopped = True # 所定時間停車したので再発車フラグON
-                elif dist_to_stop <= brake_dist_km + 0.05: 
-                    # ブレーキカーブに入った (+50mの余裕)
+                        has_stopped = True
+                elif dist_to_stop <= brake_dist_km + 0.005: 
+                    # 限界の停止距離ギリギリに到達したらフルブレーキ
                     action = Actions.deceleration
+                elif dist_to_stop <= brake_dist_km + 0.150:
+                    # 停止距離の150m手前に入ったら「接近ゾーン」として加速を禁止し、惰行でやり過ごす
+                    # （ここで加速させないことが、オーバーランを防ぐ最大の鍵です）
+                    action = Actions.coasting
                 else:
                     # まだ距離がある場合は目標速度まで力行/惰行
                     if train.speed < target_speed - 2.0:
