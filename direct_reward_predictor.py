@@ -11,7 +11,7 @@ class DirectRewardPredictor:
             self.scaler = joblib.load(scaler_path)
             self.is_loaded = True
             
-            # ▼変更1: 次元数を 34 から 43 に変更（特徴量追加に合わせる）
+            # ▼▼▼ 【修正】入力次元数を 34 から 43 に完全に同期 ▼▼▼
             @tf.function(input_signature=[tf.TensorSpec(shape=[1, 43], dtype=tf.float32)])
             def predict_fn(x):
                 return self.model(x, training=False)
@@ -21,115 +21,138 @@ class DirectRewardPredictor:
             print(f"[Warning] {model_path} または {scaler_path} が見つかりません。デフォルトの0.0を使用します。")
             self.is_loaded = False
         
-        self.phase_categories = [
-            "駅出発直後の加速フェーズ（20秒以内）", 
-            "巡航フェーズ（駅間走行中）", 
-            "制限速度区間に接近中（500m以内に制限区間在り）", 
-            "次駅への減速フェーズ（駅手前400m以内）",
-            "駅停車完了（速度0km/h）"
+        # 特徴量カラムの並び順（train_reward_network2.py と完全一致）
+        self.feature_cols = [
+            'hold_coast', 'hold_accel', 'hold_decel', 
+            'prev_notch_duration',
+            'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 
+            'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient',
+            'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 
+            'required_speed_mps', 'required_cruise_speed', 'hunting_score',
+            'f_relative_speed', 'b_relative_speed',
+            'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
+            'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
+            'f_exist', 'f_distance', 'f_speed',
+            'b_exist', 'b_distance', 'b_speed',
+            'phase_駅出発直後の加速フェーズ（20秒以内）', 
+            'phase_巡航フェーズ（駅間走行中）', 
+            'phase_制限速度区間に接近中（500m以内に制限区間在り）', 
+            'phase_次駅への減速フェーズ（駅手前400m以内）',
+            'phase_駅停車完了（速度0km/h）',
+            'current_notch_惰行中', 
+            'current_notch_力行（加速）中', 
+            'current_notch_ブレーキ（減速）中',
+            'prev_notch_惰行', 
+            'prev_notch_力行（加速）', 
+            'prev_notch_ブレーキ（減速）'
         ]
-        self.notch_categories = ["惰行中", "力行（加速）中", "ブレーキ（減速）中"]
-        self.prev_notch_categories = ["惰行", "力行（加速）", "ブレーキ（減速）"]
+
+    def _preprocess_state(self, s):
+        """
+        environment2.py から渡される辞書データ(s)を 
+        学習時と完全に一致する並び順の 43次元 の数値行列 (1, 43) に前処理変換する。
+        """
+        # 1. カレントノッチのフラグ化
+        is_coast = 1.0 if s['current_notch'] == "惰行中" else 0.0
+        is_accel = 1.0 if s['current_notch'] == "力行（加速）中" else 0.0
+        is_decel = 1.0 if s['current_notch'] == "ブレーキ（減速）中" else 0.0
+        
+        # 2. 派生特徴量の動的計算
+        margin_speed = s['speed_limit'] - s['current_speed']
+        margin_signal_speed = s['signal_speed'] - s['current_speed']
+        margin_stop_dist = s['dist_to_next_station'] - s['req_stop_dist']
+        
+       # ▼▼▼ 修正: 時間が0以下になることによる要求速度の計算爆発を防ぐ ▼▼▼
+        safe_time = max(1.0, s['time_to_next_station'])
+        req_speed_mps = s['dist_to_next_station'] / safe_time
+        req_cruise_speed = (req_speed_mps * 3.6) * 1.3
+        # ▲▲▲ 修正ここまで ▲▲▲
+        
+        # ノコギリ運転スコア化
+        is_hunting = (s['holding_time'] < 5.0) and (s['prev_notch_duration'] < 5.0) and (s['current_notch'] != s['prev_notch'])
+        hunting_score = max(0.0, 5.0 - s['holding_time']) / 5.0 if is_hunting else 0.0
+        
+        # テキスト情報のパース
+        nl_flag, nl_dist, nl_speed = self._extract_limit_info(s['next_limit_info'])
+        ng_flag, ng_dist, ng_val = self._extract_gradient_info(s['next_gradient_info'])
+        f_exist, f_dist, f_speed = self._extract_forward_info(s['forward_info'])
+        b_exist, b_dist, b_speed = self._extract_backward_info(s['backward_info'])
+        
+        # 特徴量のクリッピング（NNのスケーリング崩れ防止）
+        dist_to_next = min(s['dist_to_next_station'], 2000.0)
+        req_stop = min(s['req_stop_dist'], 2000.0)
+        f_dist = min(f_dist, 2000.0)
+        b_dist = min(b_dist, 2000.0)
+        
+        # 相対速度 (TTCは削除されました)
+        f_rel_speed = s['current_speed'] - f_speed
+        b_rel_speed = b_speed - s['current_speed']
+        
+        # カラム名に合わせた辞書の作成
+        features = {
+            'hold_coast': s['holding_time'] * is_coast,
+            'hold_accel': s['holding_time'] * is_accel,
+            'hold_decel': s['holding_time'] * is_decel,
+            'prev_notch_duration': s['prev_notch_duration'],
+            'speed_limit': s['speed_limit'],
+            'signal_speed': s['signal_speed'],
+            'current_speed': s['current_speed'],
+            'dist_to_next_station': dist_to_next,
+            'time_to_next_station': s['time_to_next_station'],
+            'req_stop_dist': req_stop,
+            'delay': s['delay'],
+            'current_gradient': s['current_gradient'],
+            'margin_speed': margin_speed,
+            'margin_signal_speed': margin_signal_speed,
+            'margin_stop_dist': margin_stop_dist,
+            'required_speed_mps': req_speed_mps,
+            'required_cruise_speed': req_cruise_speed,
+            'hunting_score': hunting_score,
+            'f_relative_speed': f_rel_speed,
+            'b_relative_speed': b_rel_speed,
+            'next_limit_flag': nl_flag, 'next_limit_dist': nl_dist, 'next_limit_speed': nl_speed,
+            'next_gradient_flag': ng_flag, 'next_gradient_dist': ng_dist, 'next_gradient_val': ng_val,
+            'f_exist': f_exist, 'f_distance': f_dist, 'f_speed': f_speed,
+            'b_exist': b_exist, 'b_distance': b_dist, 'b_speed': b_speed,
+            
+            # カテゴリ（テキスト）変数のワンホット化
+            'phase_駅出発直後の加速フェーズ（20秒以内）': 1.0 if s['phase'] == "駅出発直後の加速フェーズ（20秒以内）" else 0.0,
+            'phase_巡航フェーズ（駅間走行中）': 1.0 if s['phase'] == "巡航フェーズ（駅間走行中）" else 0.0,
+            'phase_制限速度区間に接近中（500m以内に制限区間在り）': 1.0 if s['phase'] == "制限速度区間に接近中（500m以内に制限区間在り）" else 0.0,
+            'phase_次駅への減速フェーズ（駅手前400m以内）': 1.0 if s['phase'] == "次駅への減速フェーズ（駅手前400m以内）" else 0.0,
+            'phase_駅停車完了（速度0km/h）': 1.0 if s['phase'] == "駅停車完了（速度0km/h）" else 0.0,
+            
+            'current_notch_惰行中': is_coast,
+            'current_notch_力行（加速）中': is_accel,
+            'current_notch_ブレーキ（減速）中': is_decel,
+            
+            'prev_notch_惰行': 1.0 if s['prev_notch'] == "惰行" else 0.0,
+            'prev_notch_力行（加速）': 1.0 if s['prev_notch'] == "力行（加速）" else 0.0,
+            'prev_notch_ブレーキ（減速）': 1.0 if s['prev_notch'] == "ブレーキ（減速）" else 0.0
+        }
+        
+        # 厳密な特徴量の順番でソートして1次元化
+        X = np.array([features[col] for col in self.feature_cols], dtype=np.float32)
+        return X.reshape(1, -1)
 
     def predict_reward(self, state_info):
         if not self.is_loaded:
             return 0.0
             
-        # 推論時のノッチ文字列置換
-        notch_str = state_info.get('current_notch', '') # engineからのキー名に合わせて 'current_notch' も取得できるようにフォールバック
-        if not notch_str:
-            notch_str = state_info.get('notch', '')
-        if notch_str == '停止・その他':
-            notch_str = 'ブレーキ（減速）中'
+        try:
+            # 前処理を実行し (1, 43) 行列に変換
+            X_raw = self._preprocess_state(state_info)
+            # 読み込まれている StandardScaler で正規化
+            X_scaled = self.scaler.transform(X_raw)
+            # 高速化された Tensor 推論関数へ入力
+            preds = self.predict_fn(tf.convert_to_tensor(X_scaled, dtype=tf.float32))
             
-        prev_notch_str = state_info.get('prev_notch', 'ブレーキ（減速）')
-        if prev_notch_str in ['なし（または停止）', 'なし', '停止・その他']:
-            prev_notch_str = 'ブレーキ（減速）'
-
-        # 1. 保持時間の分離
-        hold_time = float(state_info.get('holding_time', 0.0))
-        prev_duration = float(state_info.get('prev_notch_duration', 0.0))
-        
-        hold_coast = hold_time if "惰行中" in notch_str else 0.0
-        hold_accel = hold_time if "力行" in notch_str else 0.0
-        hold_decel = hold_time if "ブレーキ" in notch_str else 0.0
-        
-        # 2. 状態変数の取得
-        speed = float(state_info.get('current_speed', 0.0))
-        limit = float(state_info.get('speed_limit', 0.0))
-        dist = float(state_info.get('dist_to_next_station', 0.0))
-        req_dist = float(state_info.get('req_stop_dist', 0.0))
-        time_to_next = float(state_info.get('time_to_next_station', 0.0))
-        delay = float(state_info.get('delay', 0.0))
-        current_gradient = float(state_info.get('current_gradient', 0.0))
-        
-        next_limit_flag, next_limit_dist, next_limit_speed = self._extract_limit_info(state_info.get('next_limit_info', ''))
-        next_gradient_flag, next_gradient_dist, next_gradient_val = self._extract_gradient_info(state_info.get('next_gradient_info', ''))
-        f_exist, f_distance, f_speed = self._extract_forward_info(state_info.get('forward_info', ''))
-        b_exist, b_distance, b_speed = self._extract_backward_info(state_info.get('backward_info', ''))
-
-        # =====================================================================
-        # ▼▼▼ 変更2: 新しい派生特徴量のリアルタイム計算 ▼▼▼
-        # =====================================================================
-        margin_speed = limit - speed
-        margin_stop_dist = dist - req_dist
-        required_speed_mps = dist / (time_to_next + 1e-3)
-        required_cruise_speed = (required_speed_mps * 3.6) + 20.0
-        
-        is_hunting = (hold_time < 5.0) and (prev_duration < 5.0) and (notch_str != prev_notch_str)
-        hunting_score = max(0.0, 5.0 - hold_time) / 5.0 if is_hunting else 0.0
-        
-        f_relative_speed = speed - f_speed
-        f_ttc = f_distance / (f_relative_speed / 3.6 + 1e-3) if f_relative_speed > 0 else 5000.0
-        
-        b_relative_speed = b_speed - speed
-        b_ttc = b_distance / (b_relative_speed / 3.6 + 1e-3) if b_relative_speed > 0 else 5000.0
-        
-        # =====================================================================
-        # ▼▼▼ 変更3: 学習時と同じクリッピング処理の適用 ▼▼▼
-        # =====================================================================
-        dist = min(dist, 2000.0)
-        req_dist = min(req_dist, 2000.0)
-        f_distance = min(f_distance, 2000.0)
-        f_ttc = min(f_ttc, 5000.0)
-        b_distance = min(b_distance, 2000.0)
-        b_ttc = min(b_ttc, 5000.0)
-
-        # 3. Categorical の One-Hot ベクトル化
-        phase_str = state_info.get('phase', '')
-        phase_onehot = [1.0 if cat == phase_str else 0.0 for cat in self.phase_categories]
-        notch_onehot = [1.0 if cat == notch_str else 0.0 for cat in self.notch_categories]
-        prev_notch_onehot = [1.0 if prev_notch_str == cat else 0.0 for cat in self.prev_notch_categories]
-
-        # 4. 特徴量ベクトルの結合 (43次元：学習スクリプトと完全に同じ順序にする)
-        features = [
-            hold_coast, hold_accel, hold_decel,
-            prev_duration,
-            limit, speed, dist, time_to_next, req_dist, delay, current_gradient,
-            # --- 追加した派生特徴量 ---
-            margin_speed, margin_stop_dist, required_speed_mps, required_cruise_speed, hunting_score,
-            f_relative_speed, f_ttc, b_relative_speed, b_ttc,
-            # --------------------------
-            next_limit_flag, next_limit_dist, next_limit_speed,
-            next_gradient_flag, next_gradient_dist, next_gradient_val,
-            f_exist, f_distance, f_speed,
-            b_exist, b_distance, b_speed
-        ] + phase_onehot + notch_onehot + prev_notch_onehot
-        
-        # 5. スケーリングと推論
-        X = np.array(features, dtype=np.float32).reshape(1, -1)
-        X_scaled = self.scaler.transform(X).astype(np.float32)
-        
-        predicted_tensor = self.predict_fn(tf.convert_to_tensor(X_scaled, dtype=tf.float32))
-        
-        # ▼変更4: linear出力のため、0.0〜1.0にクリップして丸める
-        raw_reward = float(predicted_tensor.numpy()[0][0])
-        clipped_reward = max(0.0, min(1.0, raw_reward))
-        rounded_reward = round(clipped_reward * 10) / 10.0
-        
-        del predicted_tensor, X, X_scaled
-        
-        return rounded_reward
+            # ▼▼▼ 修正: 従来のLLMと同じく小数点第1位に丸める ▼▼▼
+            rounded_reward = round(float(preds.numpy()[0][0]), 1)
+            return rounded_reward
+        except Exception as e:
+            print(f"[推論例外発生] {e}")
+            return 0.0
 
     def _extract_limit_info(self, text):
         text = str(text)

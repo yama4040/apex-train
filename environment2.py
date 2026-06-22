@@ -36,8 +36,6 @@ class Environment:
         # 分析・CSV記録用の変数
         self.last_llm_reward = 0.0
 
-    # 変更前: def reset(self, departure_index=None, delay=0.0, weight_correction=1.0, fowerd_train_position_offset=None, start_position_offset=0.0, fowerd_train_controls=None):
-    # ▼変更後
     def reset(self, departure_index=None, delay=0.0, weight_correction=1.0, fowerd_train_time_offset=None, start_position_offset=0.0, fowerd_train_controls=None):
         if departure_index is None:
             departure_index = random.randrange(1)
@@ -74,7 +72,6 @@ class Environment:
                 self.fowerd_train = None
                 print(f"\n[警告] {fowerd_train_controls} 先行列車なしとして扱います。")
                 
-        
         if (self.fowerd_train_position is not None or start_position_offset != 0.0):
             sr_csv = self.read_csv(f"./input/sr_{departure_index}.csv")
             self.standerd_running = []
@@ -97,8 +94,8 @@ class Environment:
 
     def step(self, action):
         # 既存コード：先行列車が終点に着いたら消去
-        if (self.fowerd_train is not None and self.fowerd_train.speed <= 0.0 and self.fowerd_train.position > self.arrival_station["position"]): 
-            self.fowerd_train = None
+        #if (self.fowerd_train is not None and self.fowerd_train.speed <= 0.0 and self.fowerd_train.position > self.arrival_station["position"]): 
+            #self.fowerd_train = None
             
         # ▼【変更】先行列車のアクション適用
         if self.fowerd_train is not None:
@@ -118,7 +115,7 @@ class Environment:
         self.train.step(action_enum, time_step)
         self.t += time_step
         
-       # ▼▼▼ 追加: LLMへ渡すための「事前計算」 ▼▼▼
+        # ▼▼▼ 追加: LLMへ渡すための「事前計算」 ▼▼▼
         current_holding_time = self.holding_time + time_step if self.pre_action == action_enum else time_step
         
         # 実際にLLMに渡す段階での「直前のノッチ情報」を整理
@@ -139,7 +136,7 @@ class Environment:
             return "なし（または停止）"
         # ▲▲▲ 追加 ▲▲▲
         
-       # --- 1. LLMによる評価値 (スコア) の推論 ---
+        # --- 1. LLMによる評価値 (スコア) の推論 ---
         llm_reward = 0.0
         if self.reward_predictor:
             # ▼【追加】先行列車の情報をプロンプト形式のテキストに変換
@@ -150,19 +147,21 @@ class Environment:
             else:
                 forward_info_str = "先行列車なし"
 
-            # ▼▼▼ 追加: 欠落していた要求ブレーキ距離の計算 ▼▼▼
+            # ▼▼▼ 追加: 要求ブレーキ距離の計算 ▼▼▼
             v_ms = max(0.0, self.speed / 3.6)
             decel_ms2 = 2.5 / 3.6
             fallback_req_dist = (v_ms ** 2) / (2 * decel_ms2) + (v_ms * self.time_step)
             req_dist_val = fallback_req_dist
             # ▲▲▲ 追加ここまで ▲▲▲
 
+            # ▼▼▼ 【重要修正】'signal_speed' を追加して報酬予測側へ渡す ▼▼▼
             state_info = {
                 'speed_limit': self.current_speed_limit,
+                'signal_speed': self.cbtc_signal_speed,  # <--- 【追加】CBTC指示速度
                 'current_speed': self.speed,
                 'dist_to_next_station': self.station_remaining_distance * 1000.0, 
                 'time_to_next_station': self.remaining_time,  
-                'req_stop_dist': req_dist_val,  # <--- これでエラーが解消します
+                'req_stop_dist': req_dist_val,
                 'holding_time': current_holding_time, 
                 'prev_notch': get_prev_notch_str(current_prev_notch),
                 'prev_notch_duration': current_prev_duration,
@@ -178,10 +177,10 @@ class Environment:
             try:
                 llm_reward = self.reward_predictor.predict_reward(state_info)
             except Exception as e:
-                # エラー発生時はログを残す（デバッグ用）
                 print(f"[推論エラー]: {e}")
                 pass
         
+        llm_reward = max(0.0, min(1.0, llm_reward))  # 0.0〜1.0に強制クリップ
         self.last_llm_reward = llm_reward  # 分析保存用
 
         # --- 2. 終了判定 (done) と 絶対ルールの判定 ---
@@ -191,7 +190,6 @@ class Environment:
         
         # タイムオーバー（大幅な遅延失敗）
         if self.t >= self.departure_station["running_time"] + 60.0:
-            #done = True
             fail_penalty = -10.0
             
         # 到着駅に近づいている場合の報酬
@@ -206,22 +204,17 @@ class Environment:
         if self.speed > 0.0 and self.position > self.arrival_station["position"] + 0.005:
             fail_penalty = -5.0
             
-        # ▼▼▼ 新規追加: 駅の規定距離より手前で停止してしまった場合は強制終了 ▼▼▼
-        # ※先行列車の後ろで止まっている場合（上記の既存条件）とは切り分ける
-        if self.speed <= 0.0 and self.position < self.arrival_station["position"] - 0.01:
-            if self.fowerd_train_position is None or self.position < self.fowerd_train_position - 0.1:
-                done = True
-                # 必要に応じて「途中で止まってしまったペナルティ」を強化学習の報酬に加算することも検討してください
-                # fail_penalty = -10.0 
-        # ▲▲▲ 新規追加 ▲▲▲
-
+        # 駅の規定距離より手前で停止してしまった場合は強制終了
+        #if self.speed <= 0.0 and self.position < self.arrival_station["position"] - 0.01:
+            #if self.fowerd_train_position is None or self.position < self.fowerd_train_position - 0.1:
+                #done = True
+        
+        
 
         # --- 3. 最終的な報酬の合算 ---
-        # 道中の良さ(LLM評価: -1~1)に、エピソードの結末（成功・失敗）をアドオンする
-        #reward = llm_reward + goal_reward + fail_penalty
         reward = llm_reward
         
-         #60秒以上遅延した場合，10m以内に停車，先行列車の手前で停止できた（100メートル手前）場合，エピソード終了
+        # 60秒以上遅延した場合，10m以内に停車，先行列車の手前で停止できた（100メートル手前）場合，エピソード終了
         if self.t >= self.departure_station["running_time"] + 60.0:
             done = True
         if self.speed<=0.0 and self.position>=self.arrival_station["position"]-0.01:
@@ -233,19 +226,16 @@ class Environment:
         if self.pre_action == action_enum:
             self.holding_time += time_step
         else:
-            # ノッチが切り替わった場合、これまでの操作を「直前」として退避
             self.prev_notch = self.pre_action
             self.prev_notch_duration = self.holding_time
             self.holding_time = time_step
         self.pre_action = action_enum
-        # ▲▲▲ 変更 ▲▲▲
         
 
         return self.normalized_state, reward, done
 
     # --- LLM推論用の状態テキスト生成ヘルパー群 ---
     def _get_current_phase_str(self):
-        # ▼【変更】学習用CSVと一言一句一致させます
         if self.t <= 20.0:
             return "駅出発直後の加速フェーズ（20秒以内）"
         elif self.station_remaining_distance <= 0.4:
@@ -278,13 +268,53 @@ class Environment:
                 direction = "上り" if next_grade > 0 else "下り"
                 return f"{int(dist_km*1000)}m先に{direction}勾配{abs(next_grade)}‰あり"
         return "この先目立った勾配なし"
+    
+    def _calc_brake_distance(self, test_speed):
+        """
+        修士本論の運動方程式(式2)および train.py の減速ロジックに完全準拠。
+        現在速度からフルブレーキ（DECELERATE）で停止するまでの距離(km)を算出する。
+        """
+        if test_speed <= 0.0:
+            return 0.0
+            
+        sim_speed = test_speed
+        sim_position = 0.0  # ブレーキ開始位置からの相対距離[km]
+        
+        train = self.train
+        grade_res = train.grade_resistance
+        curve_res = train.curve_resistance
+        time_step = train.time_step_base  # 0.01秒
+        
+        while sim_speed > 0:
+            # 式(3): 走行抵抗の計算
+            travel_res = 2.39 + 0.0224 * sim_speed + 0.00062 * (sim_speed**2)
+            
+            # ▼▼▼ train.pyと全く同じ運動方程式の実装 ▼▼▼
+            # ブレーキ時の力 (Force) として train.DECELERATE を代入
+            force = train.DECELERATE
+            
+            # 式(2): 加速度 accel [km/h/s] の算出
+            accel = ((((force - travel_res) * train.WEIGTH_CORRECTION) - (grade_res + curve_res)) / train.FACTOR_OF_INERTIA)
+            
+            # 速度の更新: 速度 [km/h] += 加速度 [km/h/s] * 時間 [s]
+            sim_speed += accel * time_step
+            
+            if sim_speed < 0:
+                sim_speed = 0.0
+                
+            # 位置の更新: 距離 [km] += 速度 [km/h] * 時間 [h]
+            sim_position += sim_speed * (time_step / 3600.0)
+            # ▲▲▲ 修正ここまで ▲▲▲
+            
+        return sim_position
+
 
     # 外部（Tester）からLLMの出力値を抜くための分析用プロパティ
     @property
     def latest_rewards_info(self):
         return [self.last_llm_reward]
 
-    # --- 以下、既存のプロパティ群は一切変更なし ---
+    # --- ▼▼▼ 【重要修正】DQN用観測ベクトルを10次元に拡張 ▼▼▼ ---
     @property
     def normalized_state(self):
         pre_action_c = 1.0 if self.pre_action == Actions.coasting else 0
@@ -300,6 +330,7 @@ class Environment:
             pre_action_a,
             pre_action_d,
             (max(self.fowerd_train_remaining_distance, -0.5) + 0.5) / 2,
+            self.cbtc_signal_speed / 80.0  # <--- 【追加】10次元目の特徴量（正規化されたCBTC指示速度）
         ]
 
     @property
@@ -311,7 +342,8 @@ class Environment:
             self.holding_time,
             self.pre_action,
             self.station_remaining_distance,
-            self.fowerd_train_remaining_distance
+            self.fowerd_train_remaining_distance,
+            self.cbtc_signal_speed  # <--- 【追加】生値
         ]
 
     @property
@@ -381,3 +413,31 @@ class Environment:
             csv = pd.read_csv(f)
         self._csv_cache[path] = csv
         return csv
+
+    @property
+    def cbtc_signal_speed(self):
+        """
+        先行列車の50m手前を停止限界とするCBTC減速パターン（指示速度[km/h]）を計算する。
+        先行列車がいない（またはパターンがない）場合は、その区間の基本制限速度を返す。
+        """
+        base_limit = self.current_speed_limit
+        if self.fowerd_train_position is None:
+            return base_limit
+            
+        target_distance = self.fowerd_train_remaining_distance - 0.05
+        if target_distance <= 0.0:
+            return 0.0
+            
+        low = 0.0
+        high = base_limit
+        cbtc_speed = base_limit
+        
+        for _ in range(15):
+            mid = (low + high) / 2.0
+            if self._calc_brake_distance(mid) <= target_distance:
+                cbtc_speed = mid
+                low = mid
+            else:
+                high = mid
+                
+        return min(cbtc_speed, base_limit)

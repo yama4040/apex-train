@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 
 def custom_accuracy(y_true, y_pred):
     # LLMの評価値と予測値のズレが 0.15 以内であれば「正解(1)」とする
-    # (※推論値はLinearで0以下や1以上になる可能性もあるため、ここで計算上考慮されます)
     tolerance = 0.15
     correct_predictions = tf.cast(tf.abs(y_true - y_pred) <= tolerance, tf.float32)
     return tf.reduce_mean(correct_predictions)
@@ -71,9 +70,10 @@ def load_and_preprocess_data(csv_dir):
     
     print(f"{len(csv_files)}個のCSVファイルを読み込みます...")
     
+    # ▼▼▼ 【改修1】ヘッダに signal_speed を追加 ▼▼▼
     columns = ["time", "train_id", "phase", "current_notch", "holding_time", 
                "prev_notch", "prev_notch_duration", 
-               "speed_limit", "current_speed", 
+               "speed_limit", "signal_speed", "current_speed", 
                "dist_to_next_station", "time_to_next_station", "req_stop_dist", "delay", "current_gradient", 
                "next_limit_info", "next_gradient_info", "forward_info", "backward_info", "reward", "reason"]
     
@@ -90,21 +90,24 @@ def load_and_preprocess_data(csv_dir):
     df['current_notch'] = df['current_notch'].replace('停止・その他', 'ブレーキ（減速）中')
     
     # =====================================================================
-    # ▼▼▼ 【重要】ダミー変数化の前に、文字列を比較して計算する派生特徴量 ▼▼▼
+    # ▼▼▼ 派生特徴量の作成 ▼▼▼
     # =====================================================================
     
     # 1. 速度と距離の余裕度
     df['margin_speed'] = df['speed_limit'] - df['current_speed']
     df['margin_stop_dist'] = df['dist_to_next_station'] - df['req_stop_dist']
     
-    # 2. 定時到着に必要な平均速度と、LLMが考慮する「上乗せ分(20km/h)」を加味した要求巡航速度
-    df['required_speed_mps'] = df['dist_to_next_station'] / (df['time_to_next_station'] + 1e-3)
-    df['required_cruise_speed'] = (df['required_speed_mps'] * 3.6) + 20.0
+    # ▼▼▼ 【改修2】現在速度とCBTC信号現示のマージンを追加 ▼▼▼
+    df['margin_signal_speed'] = df['signal_speed'] - df['current_speed']
+    
+   # 2. 要求巡航速度を必要平均速度の1.3倍に設定
+    # ▼▼▼ 修正: ゼロ割り・負の時間を防ぐ (最低1.0秒) ▼▼▼
+    df['safe_time'] = df['time_to_next_station'].clip(lower=1.0)
+    df['required_speed_mps'] = df['dist_to_next_station'] / df['safe_time']
+    df['required_cruise_speed'] = (df['required_speed_mps'] * 3.6) * 1.3
     
     # 3. ノコギリ運転のスコア化 (連続値化)
-    # 現在と直前のノッチが異なり、かつ継続時間が共に5秒未満の場合にペナルティスコア(最大1.0)をつける
     hunting_condition = (df['holding_time'] < 5.0) & (df['prev_notch_duration'] < 5.0) & (df['current_notch'] != df['prev_notch'])
-    # 5秒からどれだけ短いかを割合にする (例: holding_timeが0.5秒なら (5-0.5)/5 = 0.9スコア)
     df['hunting_score'] = np.where(hunting_condition, np.maximum(0.0, 5.0 - df['holding_time']) / 5.0, 0.0).astype(np.float32)
     
     # =====================================================================
@@ -140,43 +143,26 @@ def load_and_preprocess_data(csv_dir):
     backward_features.columns = ['b_exist', 'b_distance', 'b_speed']
     df = pd.concat([df, forward_features, backward_features], axis=1)
     
-    # =====================================================================
-    # ▼▼▼ 【重要】先行列車の衝突判定用 特徴量 (TTC) ▼▼▼
-    # =====================================================================
-    
     # 相対速度 (km/h) ※プラスなら接近している
     df['f_relative_speed'] = df['current_speed'] - df['f_speed']
-    # 衝突までの余裕時間 TTC (Time To Collision) [秒]
-    # 接近していない(相対速度がゼロ以下)場合は安全とみなし、最大の5000秒とする
-    df['f_ttc'] = np.where(df['f_relative_speed'] > 0, 
-                           df['f_distance'] / (df['f_relative_speed'] / 3.6 + 1e-3), 
-                           5000.0)
-    
-    # 後続列車（任意）
     df['b_relative_speed'] = df['b_speed'] - df['current_speed']
-    df['b_ttc'] = np.where(df['b_relative_speed'] > 0, 
-                           df['b_distance'] / (df['b_relative_speed'] / 3.6 + 1e-3), 
-                           5000.0)
     
-    # =====================================================================
-    # ▼▼▼ 異常値・極端な距離情報のクリッピング（NNのスケーリング崩れ防止） ▼▼▼
-    # =====================================================================
-    df['dist_to_next_station'] = df['dist_to_next_station'].clip(upper=2000.0)
-    df['req_stop_dist'] = df['req_stop_dist'].clip(upper=2000.0)
+    # ▼▼▼ 【改修4】 f_ttc, b_ttc の算出を削除 ▼▼▼
+    
+    # 異常値・極端な距離情報のクリッピング（NNのスケーリング崩れ防止）
+    df['dist_to_next_station'] = df['dist_to_next_station']
+    df['req_stop_dist'] = df['req_stop_dist']
     df['f_distance'] = df['f_distance'].clip(upper=2000.0)
-    df['f_ttc'] = df['f_ttc'].clip(upper=5000.0)
     df['b_distance'] = df['b_distance'].clip(upper=2000.0)
-    df['b_ttc'] = df['b_ttc'].clip(upper=5000.0)
     
-    # 【追加】新しい特徴量ベクトル
+    # ▼▼▼ 【改修】学習特徴量の見直し ▼▼▼
     feature_cols = [
         'hold_coast', 'hold_accel', 'hold_decel', 
         'prev_notch_duration',
-        'speed_limit', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient',
-        # --- 今回追加した派生特徴量 ---
-        'margin_speed', 'margin_stop_dist', 'required_speed_mps', 'required_cruise_speed', 'hunting_score',
-        'f_relative_speed', 'f_ttc', 'b_relative_speed', 'b_ttc',
-        # ------------------------------
+        'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient', # signal_speed追加
+        # 派生特徴量
+        'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed_mps', 'required_cruise_speed', 'hunting_score', # margin_signal_speed追加
+        'f_relative_speed', 'b_relative_speed', # f_ttc, b_ttcを削除
         'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
         'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
         'f_exist', 'f_distance', 'f_speed',
@@ -189,17 +175,16 @@ def load_and_preprocess_data(csv_dir):
     return X, y, feature_cols
 
 def build_model(input_dim):
-    # ▼▼▼ 【完全刷新】表現力と安定性を高めたモデル設計 ▼▼▼
+    # 表現力と安定性を高めたモデル設計
     model = Sequential([
         Input(shape=(input_dim,)),
-        Dense(64, activation='relu'),      # 表現力を大幅に強化
-        Dropout(0.2),                       # 過学習防止
+        Dense(64, activation='relu'),
+        Dropout(0.2),
         Dense(32, activation='relu'),
         Dense(16, activation='relu'),
-        Dense(1, activation='linear')       # sigmoidの偏り問題を排除し、linearに変更
+        Dense(1, activation='linear')
     ])
     
-    # LLMのノイズ（理不尽な評価ブレ）に強い Huber Loss を採用
     model.compile(optimizer='adam', loss=Huber(delta=1.0), metrics=['mae', custom_accuracy])
     return model
 
@@ -248,7 +233,7 @@ def main():
         X_train_scaled, y_train,
         validation_data=(X_test_scaled, y_test),
         epochs=500,
-        batch_size=64, # バッチサイズを少し大きくして勾配を安定させる
+        batch_size=64,
         callbacks=[early_stop],
         verbose=1
     )

@@ -16,14 +16,13 @@ STOP_STATION_POS = 23.29
 TOTAL_STEPS = 1200
 
 def generate_forward_train_csv(filename, target_speed, delay_sec, stop_pos=None, stop_time_sec=0):
-    # 先行列車のインスタンスを生成（実際の物理モデルで演算する）
+    # 先行列車のインスタンスを生成
     train = Train(TARGET_STATION, position=START_POS, speed=0.0)
     
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
-        # environment2.py が読み込むためのヘッダ
         writer.writerow(['time', 'position', 'speed', 'action'])
         
         has_stopped = False
@@ -35,44 +34,43 @@ def generate_forward_train_csv(filename, target_speed, delay_sec, stop_pos=None,
             # 1. 出発前の遅延（待機）フェーズ
             if t < delay_sec:
                 action = Actions.deceleration
-
-            # 2. 駅への停車および待機フェーズ
-            elif stop_pos is not None and not has_stopped:
-                dist_to_stop = stop_pos - train.position
-                
-                # train.py に実装した正確な必要停止距離を使用
-                brake_dist_km = train.req_stop_dist 
-                
-                if dist_to_stop <= 0.010 and train.speed <= 1.0:
-                    # 停止位置(誤差10m以内)でほぼ停止している場合
-                    action = Actions.deceleration
-                    stop_timer += 1
-                    if stop_timer >= stop_time_sec:
-                        has_stopped = True
-                elif dist_to_stop <= brake_dist_km + 0.005: 
-                    # 限界の停止距離ギリギリに到達したらフルブレーキ
-                    action = Actions.deceleration
-                elif dist_to_stop <= brake_dist_km + 0.150:
-                    # 停止距離の150m手前に入ったら「接近ゾーン」として加速を禁止し、惰行でやり過ごす
-                    # （ここで加速させないことが、オーバーランを防ぐ最大の鍵です）
-                    action = Actions.coasting
+            else:
+                # 2. 駅停車フェーズ (stop_pos が指定されている場合)
+                if stop_pos is not None and not has_stopped:
+                    dist_to_stop = stop_pos - train.position
+                    
+                    # ▼▼▼ 修正: ブレーキ開始距離を現在の速度から動的に逆算する ▼▼▼
+                    v_ms = train.speed / 3.6
+                    decel_ms2 = 2.4 / 3.6  # 減速度 2.4 km/h/s
+                    # 必要なブレーキ距離(km) ＋ 余裕マージン(10m)
+                    req_brake_dist = ((v_ms ** 2) / (2 * decel_ms2)) / 1000.0 + 0.01
+                    
+                    # 必要な距離に入ったらブレーキ開始
+                    if dist_to_stop <= req_brake_dist:  
+                        action = Actions.deceleration
+                        
+                        # 完全に停車したらタイマーを回す
+                        if train.speed <= 0.0:
+                            stop_timer += 1
+                            action = Actions.deceleration
+                            if stop_timer >= stop_time_sec:
+                                has_stopped = True # 停車時間完了、再出発へ
+                    else:
+                        if train.speed < target_speed:
+                            action = Actions.acceleration
+                        elif train.speed > target_speed + 2.0:
+                            action = Actions.deceleration
+                        else:
+                            action = Actions.coasting
+                            
+                # 3. 通常走行フェーズ (停車完了後、または停車駅なし)
                 else:
-                    # まだ距離がある場合は目標速度まで力行/惰行
-                    if train.speed < target_speed - 2.0:
+                    if train.speed < target_speed:
                         action = Actions.acceleration
                     elif train.speed > target_speed + 2.0:
                         action = Actions.deceleration
                     else:
                         action = Actions.coasting
-                        
-            # 3. 通常走行（巡航）フェーズ
-            else:
-                if train.speed < target_speed - 2.0:
-                    action = Actions.acceleration
-                elif train.speed > target_speed + 2.0:
-                    action = Actions.deceleration
-                else:
-                    action = Actions.coasting
             
             # --- CSVへ書き込むためのアクション文字列の変換 ---
             if action == Actions.acceleration:
@@ -101,12 +99,4 @@ if __name__ == "__main__":
     for f_delay in [0, 5, 10]:
         for stop_time in [30, 45, 60]:
             filename = f"input/f_train_delay{f_delay}_stop{stop_time}.csv"
-            generate_forward_train_csv(
-                filename, 
-                target_speed=65.0,     # 通常区間は65km/hで走行
-                delay_sec=f_delay, 
-                stop_pos=STOP_STATION_POS, 
-                stop_time_sec=stop_time
-            )
-            
-    print("=== すべての生成が完了しました！ ===")
+            generate_forward_train_csv(filename, target_speed=50.0, delay_sec=f_delay, stop_pos=STOP_STATION_POS, stop_time_sec=stop_time)

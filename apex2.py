@@ -345,7 +345,12 @@ class Tester:
         self.q_network.save_weights(dir_name+file_name+".weights.h5")
         episode_rewards = 0
         
-        # ▼【大改修】テストケースの再構築
+        # ▼▼▼【追加】50サイクル保存フォルダ内に「LLM評価用」ディレクトリを自動作成 ▼▼▼
+        llm_dir = os.path.join(dir_name, "LLM評価用")
+        os.makedirs(llm_dir, exist_ok=True)
+        # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        # テストケースの再構築
         test_cases = []
         test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "desc": "Sim1_Normal"})
         for delay in [5.0, 10.0, 15.0]:
@@ -358,7 +363,6 @@ class Tester:
             "input/f_train_delay0_stop60.csv"
         ]
         
-        # [30, 60, 120]秒の出発間隔でテストケース作成
         for csv_path in f_train_csvs:
             for hw in [30.0, 60.0, 120.0]:
                 csv_name = csv_path.split("/")[-1].replace(".csv", "")
@@ -371,7 +375,6 @@ class Tester:
         env = self.env
         
         for tc in test_cases:
-            # ▼【変更】fowerd_train_time_offset として headway を渡す
             state = env.reset(11, tc["delay"], 1.0, fowerd_train_time_offset=tc["headway"], fowerd_train_controls=tc["f_train_csv"])
             speeds = []
             positions = []
@@ -397,6 +400,7 @@ class Tester:
                     plt.plot([sec_start, sec_start], [front_sections[fsi]["speed_limit"], front_sections[fsi-1]["speed_limit"]], "k-", lw=1)
                 sec_start += front_sections[fsi]["distance"]
 
+            # 既存の生データ用CSVのオープン
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
             writer = csv.writer(f)
             
@@ -407,6 +411,19 @@ class Tester:
                 "Q_coast", "Q_accel", "Q_decel", "total_reward", "llm_reward"
             ]
             writer.writerow(header)
+            
+            # ▼▼▼【追加】LLM評価用のテキストベースCSVのオープン ▼▼▼
+            f_llm = open(os.path.join(llm_dir, f"{file_name}_{ci}_llm.csv"), "w", newline="", encoding="utf-8")
+            llm_writer = csv.writer(f_llm)
+            llm_header = [
+                "time", "train_id", "phase", "current_notch", "holding_time", 
+                "prev_notch", "prev_notch_duration", "speed_limit", "signal_speed", 
+                "current_speed", "dist_to_next_station", "time_to_next_station", 
+                "req_stop_dist", "delay", "current_gradient", "next_limit_info", 
+                "next_gradient_info", "forward_info", "backward_info", "reward"
+            ]
+            llm_writer.writerow(llm_header)
+            # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
             
             while not done:
                 speeds.append(env.speed)
@@ -427,13 +444,116 @@ class Tester:
                 
                 masked_qs = qs.copy()
                 masked_qs[forbidden] = -np.inf
-                action = int(np.argmax(masked_qs))
+                action = int(np.argmax(masked_qs)) 
                 
+                # =================================================================
+                # 1. 状態の取得（ステップ実行「前」に取るべき情報）
+                # =================================================================
+                current_t = env.t
+                current_speed = env.speed
+                speed_limit = env.current_speed_limit
+                
+                signal_speed = getattr(env, 'cbtc_signal_speed', speed_limit)
+                dist_to_next_station = max(env.station_remaining_distance * 1000, 0.0) 
+                time_to_next_station = max(env.remaining_time, 0.0)
+                
+                # 要求停止距離の計算（environment2.py の推論側と完全同期）
+                v_ms = max(0.0, current_speed / 3.6)
+                decel_ms2 = 2.5 / 3.6
+                req_stop_dist = (v_ms ** 2) / (2 * decel_ms2) + (v_ms * getattr(env, 'time_step', 1.0))
+                
+                # 先行列車情報のテキスト化
+                if env.fowerd_train_position is not None:
+                    fw_dist = max((env.fowerd_train_position - env.position) * 1000, 0.0)
+                    fw_speed = env.fowerd_train.speed if env.fowerd_train is not None else 0.0
+                    forward_info_str = f"前方{fw_dist:.1f}m先を{fw_speed:.1f}km/h"
+                else:
+                    forward_info_str = "先行列車なし"
+                    
+                # =================================================================
+                # ▼▼▼ 行動を環境に反映（ステップ実行）▼▼▼
+                # =================================================================
                 next_state, reward, done = env.step(action)
                 
-                tri_drive_info = env.latest_rewards_info
-                t_state=[*t_state, *n_state, *qs, reward, *tri_drive_info]
+                # =================================================================
+                # 2. ノッチ情報とフェーズの取得（ステップ実行「後」に取るべき情報）
+                # ※ env.step() 後に確実に更新されたプロパティを参照する
+                # =================================================================
+                # 現在のノッチ
+                notch_dict = {0: "惰行中", 1: "力行（加速）中", 2: "ブレーキ（減速）中"}
+                current_notch_val = int(env.pre_action)
+                current_notch_str = notch_dict.get(current_notch_val, "惰行中")
+                
+                # 現在のノッチ保持時間
+                holding_time = env.holding_time
+                
+                # 直前のノッチ
+                prev_notch_dict = {0: "惰行", 1: "力行（加速）", 2: "ブレーキ（減速）"}
+                prev_notch_enum = getattr(env, 'prev_notch', None)
+                if prev_notch_enum is not None:
+                    prev_notch_val = int(prev_notch_enum)
+                    prev_notch_str = prev_notch_dict.get(prev_notch_val, "なし（または停止）")
+                else:
+                    prev_notch_str = "なし（または停止）"
+                    
+                # 直前のノッチ保持時間
+                prev_notch_duration = getattr(env, 'prev_notch_duration', 0.0)
+
+                # 運転フェーズのテキスト逆生成
+                if dist_to_next_station <= 10.0 and current_speed <= 0.1:
+                    phase_str = "駅停車完了（速度0km/h）"
+                elif current_t <= 20.0:
+                    phase_str = "駅出発直後の加速フェーズ（20秒以内）"
+                elif dist_to_next_station <= 400.0:
+                    phase_str = "次駅への減速フェーズ（駅手前400m以内）"
+                else:
+                    phase_str = "巡航フェーズ（駅間走行中）"
+                
+                # 勾配・その他のテキスト（environment2.py から取得）
+                current_gradient = 0.0
+                if hasattr(env, 'train') and hasattr(env.train, 'front_grades') and len(env.train.front_grades) > 0:
+                    current_gradient = env.train.front_grades[0]["grade"]
+                
+                next_limit_info_str = "この先制限速度なし"
+                if hasattr(env, '_get_next_limit_info'):
+                    next_limit_info_str = env._get_next_limit_info()
+                    
+                next_gradient_info_str = "この先目立った勾配なし"
+                if hasattr(env, '_get_next_gradient_info'):
+                    next_gradient_info_str = env._get_next_gradient_info()
+
+                backward_info_str = "後続列車なし"
+                # =================================================================
+                
+                tri_drive_info = getattr(env, 'latest_rewards_info', [])
+                t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info]
                 writer.writerow(t_state)
+                
+                # ▼▼▼【追加】LLM評価用CSVに行データを書き込み ▼▼▼
+                llm_row = [
+                    current_t,
+                    "Train11",             
+                    phase_str,
+                    current_notch_str,
+                    holding_time,
+                    prev_notch_str,
+                    prev_notch_duration,
+                    speed_limit,
+                    signal_speed,
+                    current_speed,
+                    dist_to_next_station,
+                    time_to_next_station,
+                    req_stop_dist,
+                    tc.get("delay", 0.0),
+                    current_gradient,
+                    next_limit_info_str,
+                    next_gradient_info_str,
+                    forward_info_str,
+                    backward_info_str,
+                    reward                 
+                ]
+                llm_writer.writerow(llm_row)
+                # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
                 
                 episode_rewards += reward
                 if ci==0: 
@@ -441,17 +561,18 @@ class Tester:
                     tc0_cumulative_reward += reward
                 state = next_state
             
-            # ループを抜けた後、グラフ描画処理
+            # ループを抜けた後、グラフ描画とファイルクローズ
             f.close()
+            f_llm.close() # ▼▼▼【追加】LLM評価用CSVのクローズ ▼▼▼
             
-            # 1枚目: 位置-速度グラフ (既存のまま)
+            # 1枚目: 位置-速度グラフ
             plt.plot(positions, speeds, "r-", label="Own Train")
             if len(f_positions) > 0:
                 plt.plot(f_positions, f_speeds, "b--", label="Forward Train")
             plt.legend(loc="upper right")
             plt.savefig(f"{dir_name}{file_name}_{ci}.png")
             
-            # ▼【改修】2枚目: 運行図表（ダイアグラム）の描画
+            # 2枚目: 運行図表（ダイアグラム）の描画
             plt.figure(dpi=200, figsize=(10, 6))
             plt.xlabel("Time [s]")
             plt.ylabel("Position [km]")
@@ -465,13 +586,9 @@ class Tester:
             plt.plot(times, positions, "r-", label="Own Train")
             
             if len(f_positions) > 0:
-                # 横軸は環境内時間 (env.t) なので、そのままプロットすれば自列車の t=0 時点で
-                # 先行列車が少し先にいる状態が正しく表現されます。
                 plt.plot(f_times, f_positions, "b--", label="Forward Train")
             
-            # ▼【変更】Y軸を「羽前成田」から「白兎+0.1km」の範囲に限定
             plt.ylim(env.departure_station["position"] - 0.05, hakuto_pos + 0.1)
-            
             plt.legend(loc="lower right")
             plt.grid(True)
             
@@ -487,7 +604,6 @@ class Tester:
             pass
             
         return episode_rewards, file_name, full_reward, tc0_cumulative_reward
-
 
 def main(num_actors, gamma, num_states, time_step=1.0):
     
@@ -664,4 +780,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
                 print("=== 全プロセスの再生成完了 ===")
 
 if __name__ == "__main__":
-    main(num_actors=5, gamma=0.9975, num_states=9, time_step=1.0)
+    main(num_actors=5, gamma=0.9975, num_states=10, time_step=1.0)
