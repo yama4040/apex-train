@@ -180,7 +180,7 @@ class Environment:
                 print(f"[推論エラー]: {e}")
                 pass
         
-        llm_reward = max(-1.0, min(1.0, llm_reward))  # 0.0〜1.0に強制クリップ
+        llm_reward = max(0.0, min(1.0, llm_reward))  # 0.0〜1.0に強制クリップ
         self.last_llm_reward = llm_reward  # 分析保存用
 
         # --- 2. 終了判定 (done) と 絶対ルールの判定 ---
