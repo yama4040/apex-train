@@ -404,10 +404,15 @@ class Tester:
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
             writer = csv.writer(f)
             
+            # ▼▼▼【修正】19次元のraw_state, normalized_stateに合わせた新しいヘッダ（全43列）▼▼▼
             header = [
-                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time", "raw_pre_action", "raw_stat_dist2", "raw_fw_dist",
-                "norm_speed", "norm_stat_dist", "norm_stat_dist_clip", "norm_rem_time", "norm_hold_time", 
-                "norm_pre_act_c", "norm_pre_act_a", "norm_pre_act_d", "norm_fw_dist",
+                # 1. 生の観測値 (raw_state: 19次元)
+                "raw_speed", "raw_stat_dist_wide", "raw_stat_dist_zoom", "raw_rem_time", "raw_hold_time", 
+                "raw_pre_act_c", "raw_pre_act_a", "raw_pre_act_d", "raw_fw_dist",
+                "raw_cbtc_signal", "raw_speed_limit", "raw_req_stop_dist", "raw_margin_stop_dist",
+                "raw_phase_accel", "raw_phase_cruise", "raw_phase_limit", "raw_phase_decel", "raw_phase_stop", 
+                "raw_fw_speed",
+                # 3. ネットワークの出力と報酬情報 (5次元)
                 "Q_coast", "Q_accel", "Q_decel", "total_reward", "llm_reward"
             ]
             writer.writerow(header)
