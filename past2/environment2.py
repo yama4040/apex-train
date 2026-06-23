@@ -188,7 +188,6 @@ class Environment:
         goal_reward = 0.0
         fail_penalty = 0.0
         
-        """
         # タイムオーバー（大幅な遅延失敗）
         if self.t >= self.departure_station["running_time"] + 60.0:
             fail_penalty = -10.0
@@ -209,47 +208,19 @@ class Environment:
         #if self.speed <= 0.0 and self.position < self.arrival_station["position"] - 0.01:
             #if self.fowerd_train_position is None or self.position < self.fowerd_train_position - 0.1:
                 #done = True
-        """
+        
         
 
         # --- 3. 最終的な報酬の合算 ---
         reward = llm_reward
         
-        # --- 4. エピソード終了条件 ---
-        # ① タイムオーバー（大幅な遅延）
-        if self.t >= self.departure_station["running_time"] + 60.0:
-            done = True
-            
-        # ② 目標達成（駅の許容範囲内に停止）
-        # -10m(0.01km) 〜 +5m(0.005km) の範囲で速度0になったら無事到着として終了
-        if self.position >= self.arrival_station["position"] - 0.01 and self.position <= self.arrival_station["position"] + 0.005 and self.speed <= 0.0:
-            done = True
-            
-        # ③ 先行列車への異常接近・衝突判定
-        if self.fowerd_train_position is not None and self.speed <= 0.0 and self.position >= self.fowerd_train_position - 0.05:
-            done = True
-
-        # ④ オーバーラン判定（駅を通り過ぎた）
-        # 駅の許容停止位置（+5m）を越えて走っている場合は即終了
-        if self.speed > 0.0 and self.position > self.arrival_station["position"] + 0.005:
-            done = True
-            
-        # ⑤ 【重要】手前での停止（ショートオーバーラン）
-        # 駅に届いていない（-10m未満）のに速度が0になってしまった場合
-        if self.speed <= 0.0 and self.position < self.arrival_station["position"] - 0.01:
-            # ただし、先行列車がいて、その手前で止まった場合は正しい「信号待ち」なので除外
-            if self.fowerd_train_position is None or self.position < self.fowerd_train_position - 0.1:
-                done = True  # 即座にエピソードを打ち切る
-        
-        """
-        # 60秒以上遅延した場合，10m以内に停車，先行列車の手前で停止できた（50メートル手前）場合，エピソード終了
+        # 60秒以上遅延した場合，10m以内に停車，先行列車の手前で停止できた（100メートル手前）場合，エピソード終了
         if self.t >= self.departure_station["running_time"] + 60.0:
             done = True
         if self.speed<=0.0 and self.position>=self.arrival_station["position"]-0.01:
             done=True
-        if self.fowerd_train_position is not None and self.speed<=0 and self.position>=self.fowerd_train_position-0.05:
+        if self.fowerd_train_position is not None and self.speed<=0 and self.position>=self.fowerd_train_position-0.1:
             done=True
-        """
         
         # ▼▼▼ 変更: アクション保持時間の更新と直前ノッチの保存 ▼▼▼
         if self.pre_action == action_enum:
@@ -346,50 +317,21 @@ class Environment:
     # --- ▼▼▼ 【重要修正】DQN用観測ベクトルを10次元に拡張 ▼▼▼ ---
     @property
     def normalized_state(self):
-        # 1. 既存の行動フラグ
-        pre_action_c = 1.0 if self.pre_action == Actions.coasting else 0.0
-        pre_action_a = 1.0 if self.pre_action == Actions.acceleration else 0.0
-        pre_action_d = 1.0 if self.pre_action == Actions.deceleration else 0.0
-
-        # 2. 追加特徴量の計算
-        req_stop_dist = self._calc_brake_distance(self.speed)
-        margin_stop_dist = self.station_remaining_distance - req_stop_dist
-        f_speed = self.fowerd_train.speed if self.fowerd_train is not None else 80.0 # 先行列車がいない場合は80km/hとする
-
-        # 3. フェーズのOne-Hotエンコーディング
-        phase_str = self._get_current_phase_str()
-        phase_1 = 1.0 if phase_str == "駅出発直後の加速フェーズ（20秒以内）" else 0.0
-        phase_2 = 1.0 if phase_str == "巡航フェーズ（駅間走行中）" else 0.0
-        phase_3 = 1.0 if phase_str == "制限速度区間に接近中（500m以内に制限区間在り）" else 0.0
-        phase_4 = 1.0 if phase_str == "次駅への減速フェーズ（駅手前400m以内）" else 0.0
-        phase_5 = 1.0 if phase_str == "駅停車完了（速度0km/h）" else 0.0
-
-        # 4. 観測ベクトルの構築（合計 19次元）
-        # ※各値はニューラルネットワークが学習しやすいよう、おおよそ -1.0 〜 1.0 または 0.0 〜 1.0 にスケーリングしています
-        return np.array([
-            # --- 既存の入力（一部スケーリング見直し） ---
-            self.speed / 80.0,                                               # 1. 現在の速度
-            (max(self.station_remaining_distance, -0.5) + 0.5) / 2.0,        # 2. 駅までの距離（広域）
-            (max(min(self.station_remaining_distance, 0.2), -0.05) + 0.05) * 4.0, # 3. 駅までの距離（ズーム）
-            self.remaining_time / 360.0,                                     # 4. 残り時間
-            min(self.holding_time, 30.0) / 30.0,                             # 5. 同じ操作を続けている時間
-            pre_action_c,                                                    # 6. 直前の行動（惰行）
-            pre_action_a,                                                    # 7. 直前の行動（加速）
-            pre_action_d,                                                    # 8. 直前の行動（減速）
-            (max(self.fowerd_train_remaining_distance, -0.5) + 0.5) / 2.0,   # 9. 先行列車までの距離
-            
-            # --- 新規追加の入力 ---
-            self.cbtc_signal_speed / 80.0,                                   # 10. CBTCの信号現示
-            self.current_speed_limit / 80.0,                                 # 11. 路線制限速度
-            req_stop_dist / 1.0,                                             # 12. 必要なブレーキ距離（最大1km程度を想定）
-            np.clip(margin_stop_dist, -0.5, 1.5) / 1.5,                      # 13. 停車余裕マージン（負の値はオーバーラン危険域）
-            phase_1,                                                         # 14. フェーズ：加速
-            phase_2,                                                         # 15. フェーズ：巡航
-            phase_3,                                                         # 16. フェーズ：制限接近
-            phase_4,                                                         # 17. フェーズ：減速
-            phase_5,                                                         # 18. フェーズ：停車完了
-            f_speed / 80.0                                                   # 19. 先行列車の速度
-        ], dtype=np.float32)
+        pre_action_c = 1.0 if self.pre_action == Actions.coasting else 0
+        pre_action_a = 1.0 if self.pre_action == Actions.acceleration else 0
+        pre_action_d = 1.0 if self.pre_action == Actions.deceleration else 0
+        return [
+            self.speed / 80.0,
+            (max(self.station_remaining_distance, -0.5) + 0.5) / 2,
+            (max(min(self.station_remaining_distance, 0.2), -0.05) + 0.05) * 4,
+            self.remaining_time / 360.0,
+            min(self.holding_time, 30) / 30.0,
+            pre_action_c,
+            pre_action_a,
+            pre_action_d,
+            (max(self.fowerd_train_remaining_distance, -0.5) + 0.5) / 2,
+            self.cbtc_signal_speed / 80.0  # <--- 【追加】10次元目の特徴量（正規化されたCBTC指示速度）
+        ]
 
     @property
     def raw_state(self):

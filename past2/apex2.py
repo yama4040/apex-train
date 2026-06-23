@@ -780,4 +780,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
                 print("=== 全プロセスの再生成完了 ===")
 
 if __name__ == "__main__":
-    main(num_actors=5, gamma=0.9975, num_states=19, time_step=1.0)
+    main(num_actors=5, gamma=0.9975, num_states=10, time_step=1.0)
