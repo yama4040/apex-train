@@ -404,16 +404,21 @@ class Tester:
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
             writer = csv.writer(f)
             
-            # ▼▼▼【修正】19次元のraw_state, normalized_stateに合わせた新しいヘッダ（全43列）▼▼▼
+            # ▼▼▼【修正】実際のデータ構成（合計32列）に合わせた正しいヘッダ ▼▼▼
             header = [
-                # 1. 生の観測値 (raw_state: 19次元)
-                "raw_speed", "raw_stat_dist_wide", "raw_stat_dist_zoom", "raw_rem_time", "raw_hold_time", 
-                "raw_pre_act_c", "raw_pre_act_a", "raw_pre_act_d", "raw_fw_dist",
-                "raw_cbtc_signal", "raw_speed_limit", "raw_req_stop_dist", "raw_margin_stop_dist",
-                "raw_phase_accel", "raw_phase_cruise", "raw_phase_limit", "raw_phase_decel", "raw_phase_stop", 
-                "raw_fw_speed",
+                # 1. 生の観測値 (raw_state: 8次元)
+                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time", 
+                "raw_pre_act", "raw_stat_dist_2", "raw_fw_dist", "raw_cbtc_signal",
+                
+                # 2. ネットワーク入力値 (normalized_state: 19次元)
+                "norm_speed", "norm_stat_dist_wide", "norm_stat_dist_zoom", "norm_rem_time", "norm_hold_time", 
+                "norm_pre_act_c", "norm_pre_act_a", "norm_pre_act_d", "norm_fw_dist",
+                "norm_cbtc_signal", "norm_speed_limit", "norm_req_stop_dist", "norm_margin_stop_dist",
+                "phase_accel", "phase_cruise", "phase_limit", "phase_decel", "phase_stop", 
+                "norm_fw_speed",
+                
                 # 3. ネットワークの出力と報酬情報 (5次元)
-                "Q_coast", "Q_accel", "Q_decel", "total_reward", "llm_reward"
+                "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward"
             ]
             writer.writerow(header)
             
@@ -549,7 +554,7 @@ class Tester:
                     dist_to_next_station,
                     time_to_next_station,
                     req_stop_dist,
-                    tc.get("delay", 0.0),
+                    max(0.0, env.t - env.fixed_running_time),
                     current_gradient,
                     next_limit_info_str,
                     next_gradient_info_str,

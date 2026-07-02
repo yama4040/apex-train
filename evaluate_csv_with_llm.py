@@ -58,7 +58,8 @@ def call_llm_for_eval(prompt_text: str) -> Tuple[str, float]:
         eval_data = json.loads(clean_text)
         reason = eval_data.get("reason", "理由の出力なし")
         reward = float(eval_data.get("reward", 0.0))
-        reward = max(0.0, min(1.0, reward))
+        #reward = max(0.0, min(1.0, reward))
+        reward = max(-1.0, min(1.0, reward))
         return reason, reward
     except Exception as e:
         print(f"    [LLM解析エラー]: {e}\nレスポンス内容: {result_text}")

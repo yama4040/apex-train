@@ -1,7 +1,12 @@
+#報酬直接予測モデルを使用して、Apex DQNアルゴリズムで列車の制御を学習するためのコード。
 import time
 import datetime
 import os
 
+# ▼【究極のメモリ対策1】Linuxのマルチスレッドによるメモリ抱え込み(アリーナ増殖)を1つに制限して封じる
+os.environ['MALLOC_ARENA_MAX'] = '1'
+# ▼【究極のメモリ対策2】TensorFlowの不要なCPU最適化(メモリ食い)をオフにする
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import ray
 import numpy as np
@@ -10,6 +15,10 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import csv
+import psutil
+import gc
+from collections import deque
+import ctypes
 
 # Ray の起動待機時間を延長
 os.environ['RAY_raylet_start_wait_time_s'] = '120'
@@ -19,14 +28,43 @@ os.environ['RAY_raylet_start_wait_time_s'] = '120'
 from segment_tree import SumTree
 from model import QNetwork
 
-from environment import Environment
+from environment3 import Environment
 from actions import Actions
 import random
 import sys
+from tensorflow.keras.models import load_model
+import joblib
 
 tf.config.set_visible_devices([], "GPU")
 
-#このクラスがRayによって別プロセスとして非同期に実行
+# ▼【追加】TensorFlowのメモリ動的確保（必要な分だけ確保し、がめつく全取りしない）
+physical_devices = tf.config.list_physical_devices('GPU')
+if physical_devices:
+    try:
+        for gpu in physical_devices:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
+
+def free_ray_refs(*refs):
+    flat_refs = []
+    for ref in refs:
+        if ref is None:
+            continue
+        if isinstance(ref, (list, tuple, set)):
+            flat_refs.extend(x for x in ref if x is not None)
+        else:
+            flat_refs.append(ref)
+    if not flat_refs:
+        return
+    try:
+        ray._private.internal_api.free(flat_refs, local_only=False)
+    except Exception:
+        try:
+            ray.internal.free(flat_refs)
+        except Exception:
+            pass
+
 @ray.remote
 class Actor:
     def __init__(self, pid, epsilon, gamma, num_states, time_step):
@@ -37,44 +75,72 @@ class Actor:
         self.env = Environment(self.time_step)
 
         self.q_network = QNetwork(self.num_states)
-        self.epsilon = epsilon  #探索率
-        self.__gamma = gamma    #割引率
+        self.epsilon = epsilon
+        self.__gamma = gamma
         self.buffer = []
 
         self.define_network()
+        
+        @tf.function(input_signature=[tf.TensorSpec(shape=[None, self.num_states], dtype=tf.float32)])
+        def predict_q_batch(x):
+            return self.q_network(x, training=False)
+        self.predict_q_batch = predict_q_batch
+        
         self.episode_rewards = 0
 
-    #ネットワークの定義と初期化
     def define_network(self):
-        env = Environment(self.time_step)
-        state = env.reset(11,0.0)
+        state = self.env.reset(11,0.0)
         self.q_network(np.atleast_2d(state))
 
-    #エピソードを実行して経験を収集し、TD誤差を計算して返す
     def rollout(self, current_weights):
-        self.q_network.set_weights(current_weights)
-        r=random.random()   #エピソードの初期化方法をランダムに選択
-        #第一引数：出発駅のインデックス，第二引数：出発駅の遅延時間，第三引数：重量補正値，第四引数：前方列車の位置オフセット，第五引数：出発位置のオフセット，第六引数：前方列車の制御データ（CSVファイル）
-        if (r<0.5):
-            self.state = self.env.reset(11,0.0,1.0)
-        elif (r<0.75):
-            self.state = self.env.reset(11,0.0,1.0,random.uniform(0.2,1.5))
+        for var, weight in zip(self.q_network.variables, current_weights):
+            var.assign(weight)
+
+        # ▼【変更】遅延バリエーションを削り、遅延0のファイルのみを使用
+        f_train_csv_list = [
+            "input/f_train_low50.csv",
+            "input/f_train_delay0_stop30.csv",
+            "input/f_train_delay0_stop45.csv",
+            "input/f_train_delay0_stop60.csv"
+        ]
+
+        r = random.random()
+        ego_delay = random.uniform(0.0, 20.0)  # 自列車の遅延
+        headway = random.uniform(30.0, 120.0)  # ▼【追加】先行列車との出発間隔(30~120秒)
+        
+        if (r < 0.4):
+            # 先行列車なし
+            self.state = self.env.reset(11, ego_delay, 1.0)
         else:
-            self.state = self.env.reset(11,random.uniform(0.0,20),1.0,None,random.uniform(0.2,1.5))
+            # 先行列車あり（位置オフセットの代わりに time_offset を渡す）
+            random_csv = random.choice(f_train_csv_list)
+            self.state = self.env.reset(11, ego_delay, 1.0, fowerd_train_time_offset=headway, fowerd_train_controls=random_csv)
+            
         self.episode_rewards = 0
         done = False
-        #エピソードの実行と経験の収集
+        
         while not done:
-            state = self.state  #現在の状態
-            #現在の状態をネットワークに入力して行動をサンプリング（ε-greedy法）
-            action,_ = self.q_network.sample_action(np.array(state)[np.newaxis,...], self.epsilon,self.env.forbidden_action)
-            #駅までの残り距離が0.1km以下の場合、優先度を高くするための補正値を計算
+            state = self.state  
+            
+            state_tensor = tf.convert_to_tensor(np.array(state)[np.newaxis,...], dtype=tf.float32)
+            qs = self.predict_q_batch(state_tensor).numpy()[0]
+            del state_tensor
+            forbidden = self.env.forbidden_action
+            
+            if random.random() < self.epsilon:
+                valid_actions = [i for i, f in enumerate(forbidden) if not f]
+                action = random.choice(valid_actions)
+            else:
+                masked_qs = qs.copy()
+                masked_qs[forbidden] = -np.inf
+                action = int(np.argmax(masked_qs)) 
+            
             priority_correction=(0.1-(min(max(self.env.station_remaining_distance,0.0),0.1)+0.001))*500+1
             next_state, reward, done = self.env.step(action)
-            nest_forbidden_action=self.env.forbidden_action #次の状態での禁止行動（存在しない場合は0のベクトル）
-            self.episode_rewards += reward  #エピソードの累積報酬を更新
-            #1ステップの経験をバッファに保存（状態、行動、報酬、次の状態、エピソード終了フラグ、次の禁止行動、割引率、優先度補正値）
-            transition = (state, action, reward, next_state, done,nest_forbidden_action,self.gamma,priority_correction)
+            nest_forbidden_action=self.env.forbidden_action 
+            self.episode_rewards += reward  
+            
+            transition = (state, action, reward, next_state, done, nest_forbidden_action, self.gamma, priority_correction)
             self.buffer.append(transition)
             self.state = next_state
 
@@ -86,91 +152,98 @@ class Actor:
         next_forbidden_actions=np.vstack([transition[5] for transition in self.buffer])
         gammas=np.vstack([transition[6] for transition in self.buffer])
         
+        chunk_size = 512
+        next_qvalues_list = []
+        qvalues_list = []
+        for i in range(0, len(states), chunk_size):
+            next_chunk = tf.convert_to_tensor(next_states[i:i+chunk_size], dtype=tf.float32)
+            curr_chunk = tf.convert_to_tensor(states[i:i+chunk_size], dtype=tf.float32)
+            next_qvalues_list.append(self.predict_q_batch(next_chunk).numpy())
+            qvalues_list.append(self.predict_q_batch(curr_chunk).numpy())
+            del next_chunk, curr_chunk
+            
+        next_qvalues = np.concatenate(next_qvalues_list, axis=0)
+        qvalues = np.concatenate(qvalues_list, axis=0)
         
-        next_qvalues = self.q_network(next_states)      #次の状態に対するQ値をネットワークで予測
-        next_qvalues=next_qvalues+(next_forbidden_actions*-1.0 * (10**12))  #次の状態での禁止行動に対して非常に大きな負の値を加算して、これらの行動が選択されないようにする(-1兆)
-        next_actions = tf.cast(tf.argmax(next_qvalues, axis=1), tf.int32)   #次の状態での最大Q値を持つ行動を選択
-        next_actions_onehot = tf.one_hot(next_actions, len(Actions))        #次の状態での最大Q値を持つ行動をワンホットエンコード
-        #次の状態での最大Q値を計算（禁止行動は非常に大きな負の値が加算されているため、これらの行動は選択されない）
-        next_maxQ = tf.reduce_sum(next_qvalues * next_actions_onehot, axis=1, keepdims=True)
-        #ターゲットとなるQ値(TQ)を計算（報酬 + 割引率 * (1 - エピソード終了フラグ) * 次の状態での最大Q値）
+        next_qvalues = next_qvalues + (next_forbidden_actions * -1.0 * (10**12))  
+        next_actions = np.argmax(next_qvalues, axis=1)   
+        next_actions_onehot = np.eye(len(Actions))[next_actions]        
+        next_maxQ = np.sum(next_qvalues * next_actions_onehot, axis=1, keepdims=True)
         TQ = rewards + gammas * (1 - dones) * next_maxQ
 
-        qvalues = self.q_network(states)    #現在の状態に対するQ値をネットワークで予測
-        actions_onehot = tf.one_hot(actions, len(Actions))  #現在の状態で実際に選択した行動をワンホットエンコード
-        Q = tf.reduce_sum(qvalues * actions_onehot, axis=1, keepdims=True)  #現在の状態で実際に選択した行動のQ値を計算
+        actions_onehot = np.eye(len(Actions))[actions]  
+        Q = np.sum(qvalues * actions_onehot, axis=1, keepdims=True)  
         
-        #TD誤差を計算（ターゲット値 - 現在のQ値）
-        td_errors = (TQ - Q).numpy().flatten()
+        td_errors = (TQ - Q).flatten()
         transitions = self.buffer
         self.buffer = []
+        del states, actions, rewards, next_states, dones, next_forbidden_actions, gammas
+        del next_qvalues_list, qvalues_list, next_qvalues, qvalues
+        del next_actions, next_actions_onehot, next_maxQ, TQ, actions_onehot, Q
+        
+        try:
+            gc.collect()
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
 
-        #計算したTD誤差，1エピソード分の経験リスト，このActorのID（pid）を返す
         return td_errors, transitions, self.pid
     
     @property
     def gamma(self):
         return self.__gamma**(self.env.time_step/self.time_step)
+    
+    def get_memory(self):
+        return {
+            "pid": self.pid,
+            "memory_gb": psutil.Process(os.getpid()).memory_info().rss / 1024**3,
+            "gc_objects": len(gc.get_objects()),
+            "buffer_len": len(self.buffer),
+            "tensor_count": len([x for x in gc.get_objects() if isinstance(x, tf.Tensor)])
+        }
 
-#このクラスは経験リプレイバッファを管理し、優先度付き経験リプレイのサンプリングと優先度の更新を行う
 class Replay:
     def __init__(self, buffer_size, save_dir):
-
-        self.buffer_size = buffer_size  #リプレイバッファの最大サイズ
-        self.priorities = SumTree(capacity=self.buffer_size)    #優先度を管理するセグメントツリー
-        self.buffer = [None] * self.buffer_size #実際の経験を保存するリスト
-
-        #優先度の計算に使用する指数（α）。αが0の場合は通常の経験リプレイ（ランダム）、1の場合は完全な優先度付き経験リプレイになる。
+        self.buffer_size = buffer_size
+        self.priorities = SumTree(capacity=self.buffer_size)
+        self.buffer = [None] * self.buffer_size
         self.alpha = 0.6
-
         self.count = 0
         self.is_full = False
         
-    #経験追加メソッド
     def add(self, td_errors, transitions):
         assert len(td_errors) == len(transitions)
-        #優先度の計算：TD誤差の絶対値に小さな定数を加えてからα乗することで、優先度を計算。
-        #これにより、TD誤差が大きい経験ほど優先的にサンプリングされるようになる。
         priorities = (np.abs(td_errors) + 0.001) ** self.alpha
         for priority, transition in zip(priorities, transitions):
-            self.priorities[self.count] = priority * transition[-1] #優先度に補正値を掛けることで、駅近の経験の優先度をさらに高くする
+            self.priorities[self.count] = priority * transition[-1]
             self.buffer[self.count] = transition
             self.count += 1
             if self.count == self.buffer_size:
                 self.count = 0
                 self.is_full = True
 
-    #優先度の更新メソッド
     def update_priority(self, sampled_indices, td_errors, priority_corrections):
         assert len(sampled_indices) == len(td_errors)
         for idx, td_error, priority_correction in zip(sampled_indices, td_errors, priority_corrections):
             priority = (abs(td_error) + 0.001) ** self.alpha
             self.priorities[idx] = priority*priority_correction
 
-    #優先度付き経験リプレイのサンプリングメソッド
     def sample_minibatch(self, batch_size, beta):
-
         sampled_indices = [self.priorities.sample() for _ in range(batch_size)]
-
-        #: compute prioritized experience replay weights
-        weights = []    #サンプリングされた経験の重みを格納するリスト
-        current_size = len(self.buffer) if self.is_full else self.count #現在のリプレイバッファのサイズを計算
+        weights = []
+        current_size = len(self.buffer) if self.is_full else self.count
         for idx in sampled_indices:
-            prob = self.priorities[idx] / self.priorities.sum() #その経験が選ばれる確率を計算（自分の優先度/全優先度の合計）
-            weight = (prob * current_size) ** (-beta)   #重要度サンプリングの重みを計算（(1/(N*P(i)))^β）。これにより、優先度が高い経験ほど重みが小さくなり、学習のバイアスを補正する。
+            prob = self.priorities[idx] / self.priorities.sum()
+            weight = (prob * current_size) ** (-beta)
             weights.append(weight)
-        weights = np.array(weights) / max(weights)  #重みの正規化
-
+        weights = np.array(weights) / max(weights)
         experiences = [self.buffer[idx] for idx in sampled_indices]
-
         return sampled_indices, weights, experiences
 
-#ネットワークの学習を担当
 @ray.remote(num_gpus=1)
 class Learner:
     def __init__(self,num_states, time_step):
         physical_devices = tf.config.list_physical_devices('GPU')
-        #tf.config.set_visible_devices(physical_devices[0], 'GPU')
         if len(physical_devices) > 0:
             tf.config.set_visible_devices(physical_devices[0], 'GPU')
         else:
@@ -182,18 +255,20 @@ class Learner:
         self.target_q_network = QNetwork(self.num_states)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
 
-    #ネットワークの定義と初期化
     def define_network(self):
-        env = Environment(self.time_step)
+        env = Environment(self.time_step, load_reward_predictor=False)
         state = env.reset(11,0.0)
         self.q_network(np.atleast_2d(state))
-        #if (self.init_weight is not None):self.q_network.load_weights(self.init_weight)
         self.target_q_network(np.atleast_2d(state))
         self.target_q_network.set_weights(self.q_network.get_weights())
         current_weights = self.q_network.get_weights()
         return current_weights
 
-    #ミニバッチを使用してネットワークを更新し、更新された重みとTD誤差、優先度補正値を返す
+    def set_weights(self, weights):
+        self.q_network.set_weights(weights)
+        self.target_q_network.set_weights(weights)
+        return True
+
     def update_network(self, minibatchs):
         indices_all = []
         td_errors_all = []
@@ -210,32 +285,45 @@ class Learner:
             gammas = np.vstack(gammas)
             priority_correction=np.vstack(priority_correction)
             
-            #次の状態に対するQ値をネットワークで予測し、禁止行動に対して非常に大きな負の値を加算して、これらの行動が選択されないようにする
-            next_qvalues = self.target_q_network(next_states)   #次の状態に対するQ値をネットワークで予測
-            next_qvalues=next_qvalues+(next_forbidden_actions*-1.0 * (10**12))  #次の状態での禁止行動に対して非常に大きな負の値を加算して、これらの行動が選択されないようにする(-1兆)
-            next_actions = tf.cast(tf.argmax(next_qvalues, axis=1), tf.int32)   #次の状態での最大Q値を持つ行動を選択
+            next_qvalues = self.target_q_network(next_states)
+            next_qvalues=next_qvalues+(next_forbidden_actions*-1.0 * (10**12))
+            next_actions = tf.cast(tf.argmax(next_qvalues, axis=1), tf.int32)
             next_actions_onehot = tf.one_hot(next_actions, len(Actions))
             next_maxQ = tf.reduce_sum(next_qvalues * next_actions_onehot, axis=1, keepdims=True)
             TQ = rewards + gammas * (1 - dones) * next_maxQ
+
+            weights_t = tf.convert_to_tensor(np.asarray(weights, dtype=np.float32).reshape(-1, 1))
 
             with tf.GradientTape() as tape:
                 qvalues = self.q_network(states)
                 actions_onehot = tf.one_hot(actions, len(Actions))
                 Q = tf.reduce_sum(qvalues * actions_onehot, axis=1, keepdims=True)
-                td_errors = tf.square(TQ - Q)   #TD誤差の二乗を計算（損失関数として使用）
-                loss = tf.reduce_mean(weights * td_errors)  #重要度サンプリングの重みを掛けたTD誤差の平均を損失関数とすることで、優先度付き経験リプレイのバイアスを補正する
+                
+                td_delta = TQ - Q
+                td_errors = tf.square(td_delta) 
+                loss = tf.reduce_mean(weights_t * td_errors)  
 
-            grads = tape.gradient(loss, self.q_network.trainable_variables) #損失関数に対するネットワークの重みの勾配を計算
-            grads, _ = tf.clip_by_global_norm(grads, 10.0)  #勾配のクリッピングを行うことで、勾配爆発を防止する
-            self.optimizer.apply_gradients(zip(grads, self.q_network.trainable_variables))  #ネットワークの重みを更新
+            grads = tape.gradient(loss, self.q_network.trainable_variables)
+            grads, _ = tf.clip_by_global_norm(grads, 10.0) 
+            self.optimizer.apply_gradients(zip(grads, self.q_network.trainable_variables))
             
-            #更新された重みとTD誤差、優先度補正値を返すために、各ミニバッチの結果をリストに追加
             indices_all += indices
-            td_errors_all += td_errors.numpy().flatten().tolist()
-            priority_correction_all+=priority_correction.flatten().tolist()
+            td_errors_all += td_delta.numpy().flatten().tolist()
+            priority_correction_all += priority_correction.flatten().tolist()
+            del states, actions, rewards, next_states, dones, next_forbidden_actions, gammas
+            del priority_correction, next_qvalues, next_actions, next_actions_onehot, next_maxQ, TQ
+            del qvalues, actions_onehot, Q, td_errors, loss, grads
+            del indices, weights, transitions
 
         current_weights = self.q_network.get_weights()
         self.target_q_network.set_weights(current_weights)
+        
+        try:
+            gc.collect()
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
+            
         return current_weights, indices_all, td_errors_all, priority_correction_all
 
 
@@ -246,36 +334,57 @@ class Tester:
         self.num_states = num_states
         self.time_step = time_step
         self.q_network = QNetwork(self.num_states)
+        self.env = Environment(self.time_step)
         self.define_network()
 
     def define_network(self):
-        env = Environment(self.time_step)
-        state = env.reset(11,0.0)
+        state = self.env.reset(11,0.0)
         self.q_network(np.atleast_2d(state))
 
     def test_play(self, current_weights, dir_name, file_name):
         plt.switch_backend('agg')
         self.q_network.set_weights(current_weights)
-        #self.q_network.save_weights(dir_name+file_name+".hdf5")
         self.q_network.save_weights(dir_name+file_name+".weights.h5")
         episode_rewards = 0
         
-        #14種類のテストケースを生成（遅延時間、前方列車の位置オフセット、出発位置のオフセットの組み合わせ）
-        test_cases=[{"delay": 0.0, "fowerd_train_position_offset": None, "start_position_offset": 0.0}]
-        for ftp in np.linspace(0.2, 1.5, 4):
-            test_cases.append({"delay": 0.0, "fowerd_train_position_offset": ftp, "start_position_offset": 0.0})
-        for delay in np.linspace(0.0, 10.0, 3):
-            for sp in np.linspace(0.2,1.5,3):
-                test_cases.append({"delay": delay, "fowerd_train_position_offset": None, "start_position_offset": sp})
-        full_reward=0
-        ci=0
+        # ▼▼▼【追加】50サイクル保存フォルダ内に「LLM評価用」ディレクトリを自動作成 ▼▼▼
+        llm_dir = os.path.join(dir_name, "LLM評価用")
+        os.makedirs(llm_dir, exist_ok=True)
+        # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        # テストケースの再構築
+        test_cases = []
+        test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "desc": "Sim1_Normal"})
+        for delay in [5.0, 10.0, 15.0]:
+            test_cases.append({"delay": delay, "f_train_csv": None, "headway": None, "desc": f"Sim2_Delay_{delay}s"})
+            
+        f_train_csvs = [
+            "input/f_train_low50.csv",
+            "input/f_train_delay0_stop30.csv",
+            "input/f_train_delay0_stop45.csv",
+            "input/f_train_delay0_stop60.csv"
+        ]
         
-        #各テストケースに対してエピソードを実行し、報酬を記録してCSVファイルとグラフを保存
+        for csv_path in f_train_csvs:
+            for hw in [30.0, 60.0, 120.0]:
+                csv_name = csv_path.split("/")[-1].replace(".csv", "")
+                test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "desc": f"Sim3_HW{int(hw)}_{csv_name}"})
+
+        full_reward = 0
+        tc0_cumulative_reward = 0 
+        ci = 0
+        
+        env = self.env
+        
         for tc in test_cases:
-            env = Environment(self.time_step)
-            state = env.reset(11,tc["delay"],1.0,tc["fowerd_train_position_offset"],tc["start_position_offset"])
+            state = env.reset(11, tc["delay"], 1.0, fowerd_train_time_offset=tc["headway"], fowerd_train_controls=tc["f_train_csv"])
             speeds = []
             positions = []
+            times = []
+            f_speeds = []
+            f_positions = []
+            f_times = []
+            
             done = False
             plt.figure(dpi=200, figsize=(10, 10))
             plt.xlabel("Position[km]")
@@ -283,7 +392,7 @@ class Tester:
             plt.plot([env.departure_station["position"], env.arrival_station["position"]], [0, 0], "k-", lw=3)
             plt.plot([env.departure_station["position"], env.departure_station["position"]], [0, 100], "k-", lw=3)
             plt.plot([env.arrival_station["position"], env.arrival_station["position"]], [0, 100], "k-", lw=3)
-            if (tc["fowerd_train_position_offset"] is not None):
+            if env.fowerd_train_position is not None:
                 plt.plot([env.fowerd_train_position, env.fowerd_train_position], [0, 100], "k-", lw=3)
             sec_start = env.position
             front_sections=env.train.front_sections
@@ -293,146 +402,336 @@ class Tester:
                     plt.plot([sec_start, sec_start], [front_sections[fsi]["speed_limit"], front_sections[fsi-1]["speed_limit"]], "k-", lw=1)
                 sec_start += front_sections[fsi]["distance"]
 
+            # 既存の生データ用CSVのオープン
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
             writer = csv.writer(f)
             
-            # ▼【追加】データの列が何を表しているか分かりやすいようにヘッダーを書き込む
+            # ▼▼▼【修正】実際のデータ構成（合計32列）に合わせた正しいヘッダ ▼▼▼
             header = [
-                # raw_state (7次元)
-                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time", "raw_pre_action", "raw_stat_dist2", "raw_fw_dist",
-                # normalized_state (9次元)
-                "norm_speed", "norm_stat_dist", "norm_stat_dist_clip", "norm_rem_time", "norm_hold_time", 
+                # 1. 生の観測値 (raw_state: 8次元)
+                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time", 
+                "raw_pre_act", "raw_stat_dist_2", "raw_fw_dist", "raw_cbtc_signal",
+                
+                # 2. ネットワーク入力値 (normalized_state: 19次元)
+                "norm_speed", "norm_stat_dist_wide", "norm_stat_dist_zoom", "norm_rem_time", "norm_hold_time", 
                 "norm_pre_act_c", "norm_pre_act_a", "norm_pre_act_d", "norm_fw_dist",
-                # Q-values (3次元) & 合計Reward
-                "Q_coast", "Q_accel", "Q_decel", "total_reward",
-                # Tri-Drive Info (6次元)
-                "w_surv", "R_surv", "w_conf", "R_conf", "w_comp", "R_comp"
+                "norm_cbtc_signal", "norm_speed_limit", "norm_req_stop_dist", "norm_margin_stop_dist",
+                "phase_accel", "phase_cruise", "phase_limit", "phase_decel", "phase_stop", 
+                "norm_fw_speed",
+                
+                # 3. ネットワークの出力と報酬情報 (5次元)
+                "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward"
             ]
             writer.writerow(header)
             
-            #エピソードの実行とデータの記録
+            # ▼▼▼【追加】LLM評価用のテキストベースCSVのオープン ▼▼▼
+            f_llm = open(os.path.join(llm_dir, f"{file_name}_{ci}_llm.csv"), "w", newline="", encoding="utf-8")
+            llm_writer = csv.writer(f_llm)
+            llm_header = [
+                "time", "train_id", "phase", "current_notch", "holding_time", 
+                "prev_notch", "prev_notch_duration", "speed_limit", "signal_speed", 
+                "current_speed", "dist_to_next_station", "time_to_next_station", 
+                "req_stop_dist", "delay", "current_gradient", "next_limit_info", 
+                "next_gradient_info", "forward_info", "backward_info", "reward"
+            ]
+            llm_writer.writerow(llm_header)
+            # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+            
             while not done:
                 speeds.append(env.speed)
                 positions.append(env.position)
+                times.append(env.t)
+                
+                if env.fowerd_train is not None:
+                    f_positions.append(env.fowerd_train.position)
+                    f_speeds.append(env.fowerd_train.speed)
+                    f_times.append(env.t)
+                    
                 t_state = env.raw_state
                 n_state=env.normalized_state
-                action,qs = self.q_network.sample_action(np.array(state)[np.newaxis,...], 0.0,env.forbidden_action)
                 
+                state_tensor = tf.convert_to_tensor(np.array(state)[np.newaxis,...], dtype=tf.float32)
+                qs = self.q_network(state_tensor, training=False).numpy()[0]
+                forbidden = env.forbidden_action
+                
+                masked_qs = qs.copy()
+                masked_qs[forbidden] = -np.inf
+                action = int(np.argmax(masked_qs)) 
+                
+                # =================================================================
+                # 1. 状態の取得（ステップ実行「前」に取るべき情報）
+                # =================================================================
+                current_t = env.t
+                current_speed = env.speed
+                speed_limit = env.current_speed_limit
+                
+                signal_speed = getattr(env, 'cbtc_signal_speed', speed_limit)
+                dist_to_next_station = max(env.station_remaining_distance * 1000, 0.0) 
+                time_to_next_station = max(env.remaining_time, 0.0)
+                
+                # 要求停止距離の計算（environment2.py の推論側と完全同期）
+                v_ms = max(0.0, current_speed / 3.6)
+                decel_ms2 = 2.5 / 3.6
+                req_stop_dist = (v_ms ** 2) / (2 * decel_ms2) + (v_ms * getattr(env, 'time_step', 1.0))
+                
+                # 先行列車情報のテキスト化
+                if env.fowerd_train_position is not None:
+                    fw_dist = max((env.fowerd_train_position - env.position) * 1000, 0.0)
+                    fw_speed = env.fowerd_train.speed if env.fowerd_train is not None else 0.0
+                    forward_info_str = f"前方{fw_dist:.1f}m先を{fw_speed:.1f}km/h"
+                else:
+                    forward_info_str = "先行列車なし"
+                    
+                # =================================================================
+                # ▼▼▼ 行動を環境に反映（ステップ実行）▼▼▼
+                # =================================================================
                 next_state, reward, done = env.step(action)
                 
-                # ▼【追加】environmentからTri-Driveの重みと値を取得
-                tri_drive_info = env.latest_rewards_info
+                # =================================================================
+                # 2. ノッチ情報とフェーズの取得（ステップ実行「後」に取るべき情報）
+                # ※ env.step() 後に確実に更新されたプロパティを参照する
+                # =================================================================
+                # 現在のノッチ
+                notch_dict = {0: "惰行中", 1: "力行（加速）中", 2: "ブレーキ（減速）中"}
+                current_notch_val = int(env.pre_action)
+                current_notch_str = notch_dict.get(current_notch_val, "惰行中")
                 
-                # ▼【変更】出力リストの末尾に tri_drive_info を結合して書き込む
-                t_state=[*t_state, *n_state, *qs, reward, *tri_drive_info]
+                # 現在のノッチ保持時間
+                holding_time = env.holding_time
+                
+                # 直前のノッチ
+                prev_notch_dict = {0: "惰行", 1: "力行（加速）", 2: "ブレーキ（減速）"}
+                prev_notch_enum = getattr(env, 'prev_notch', None)
+                if prev_notch_enum is not None:
+                    prev_notch_val = int(prev_notch_enum)
+                    prev_notch_str = prev_notch_dict.get(prev_notch_val, "なし（または停止）")
+                else:
+                    prev_notch_str = "なし（または停止）"
+                    
+                # 直前のノッチ保持時間
+                prev_notch_duration = getattr(env, 'prev_notch_duration', 0.0)
+
+                # 運転フェーズのテキスト逆生成
+                if dist_to_next_station <= 10.0 and current_speed <= 0.1:
+                    phase_str = "駅停車完了（速度0km/h）"
+                elif current_t <= 20.0:
+                    phase_str = "駅出発直後の加速フェーズ（20秒以内）"
+                elif dist_to_next_station <= 400.0:
+                    phase_str = "次駅への減速フェーズ（駅手前400m以内）"
+                else:
+                    phase_str = "巡航フェーズ（駅間走行中）"
+                
+                # 勾配・その他のテキスト（environment2.py から取得）
+                current_gradient = 0.0
+                if hasattr(env, 'train') and hasattr(env.train, 'front_grades') and len(env.train.front_grades) > 0:
+                    current_gradient = env.train.front_grades[0]["grade"]
+                
+                next_limit_info_str = "この先制限速度なし"
+                if hasattr(env, '_get_next_limit_info'):
+                    next_limit_info_str = env._get_next_limit_info()
+                    
+                next_gradient_info_str = "この先目立った勾配なし"
+                if hasattr(env, '_get_next_gradient_info'):
+                    next_gradient_info_str = env._get_next_gradient_info()
+
+                backward_info_str = "後続列車なし"
+                # =================================================================
+                
+                tri_drive_info = getattr(env, 'latest_rewards_info', [])
+                t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info]
                 writer.writerow(t_state)
                 
+                # ▼▼▼【追加】LLM評価用CSVに行データを書き込み ▼▼▼
+                llm_row = [
+                    current_t,
+                    "Train11",             
+                    phase_str,
+                    current_notch_str,
+                    holding_time,
+                    prev_notch_str,
+                    prev_notch_duration,
+                    speed_limit,
+                    signal_speed,
+                    current_speed,
+                    dist_to_next_station,
+                    time_to_next_station,
+                    req_stop_dist,
+                    max(0.0, env.t - env.fixed_running_time),
+                    current_gradient,
+                    next_limit_info_str,
+                    next_gradient_info_str,
+                    forward_info_str,
+                    backward_info_str,
+                    reward                 
+                ]
+                llm_writer.writerow(llm_row)
+                # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+                
                 episode_rewards += reward
-                if ci==0: full_reward=reward
+                if ci==0: 
+                    full_reward=reward
+                    tc0_cumulative_reward += reward
                 state = next_state
             
-            # 終了時の状態書き込み（必要であればここにも追加できますが、通常は最後のステップだけでOKです）
-            # writer.writerow([*env.raw_state,*env.normalized_state])
+            # ループを抜けた後、グラフ描画とファイルクローズ
             f.close()
-            plt.plot(positions, speeds, "r")
+            f_llm.close() # ▼▼▼【追加】LLM評価用CSVのクローズ ▼▼▼
+            
+            # 1枚目: 位置-速度グラフ
+            plt.plot(positions, speeds, "r-", label="Own Train")
+            if len(f_positions) > 0:
+                plt.plot(f_positions, f_speeds, "b--", label="Forward Train")
+            plt.legend(loc="upper right")
             plt.savefig(f"{dir_name}{file_name}_{ci}.png")
-            plt.close("all")
-            ci+=1
-        return episode_rewards, file_name, full_reward
-
+            
+            # 2枚目: 運行図表（ダイアグラム）の描画
+            plt.figure(dpi=200, figsize=(10, 6))
+            plt.xlabel("Time [s]")
+            plt.ylabel("Position [km]")
+            
+            hakuto_pos = 23.29 # 白兎駅の位置
+            
+            plt.axhline(y=env.departure_station["position"], color='k', linestyle='-', lw=2, label="Uzen-Narita")
+            plt.axhline(y=hakuto_pos, color='g', linestyle='--', lw=2, label="Hakuto")
+            plt.axhline(y=env.arrival_station["position"], color='k', linestyle='-', lw=2, label="Target")
+            
+            plt.plot(times, positions, "r-", label="Own Train")
+            
+            if len(f_positions) > 0:
+                plt.plot(f_times, f_positions, "b--", label="Forward Train")
+            
+            plt.ylim(env.departure_station["position"] - 0.05, hakuto_pos + 0.1)
+            plt.legend(loc="lower right")
+            plt.grid(True)
+            
+            plt.savefig(f"{dir_name}{file_name}_{ci}_diagram.png")
+            plt.close('all')
+            
+            ci += 1
+            
+        try:
+            gc.collect()
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
+            
+        return episode_rewards, file_name, full_reward, tc0_cumulative_reward
 
 def main(num_actors, gamma, num_states, time_step=1.0):
-    """
-    s = time.time()
-    now = datetime.datetime.now()
-    dir_name = "data/" + now.strftime("%Y%m%d%H%M%S")
-    dir_name += "/"
-    os.mkdir(dir_name)
-    """
     
     s = time.time()
     now = datetime.datetime.now()
     
-    # スクリプトがあるディレクトリの絶対パスを取得（/home/haru1/apex-train/）
     base_dir = os.path.abspath(os.path.dirname(__file__))
-    
-    # 絶対パスで保存先ディレクトリを作成
     dir_name = os.path.join(base_dir, "data", now.strftime("%Y%m%d%H%M%S")) + "/"
     
-    # os.makedirsを使い、dataフォルダが存在しなくても親ごと安全に作成する
     os.makedirs(dir_name, exist_ok=True)
     os.makedirs(dir_name + "replay/", exist_ok=True)
     
     ray.init()
-    history = []
+    history = deque(maxlen=1000)
     
-    #各Actorの探索率を0.001から0.4まで線形に変化させた配列を作成。
-    #これにより、異なるActorが異なる程度の探索を行うようになり，学習の初期段階では多くの探索が行われ、後半ではより安定した行動選択が促される。
     epsilons = np.linspace(0.001, 0.4, num_actors,dtype=np.float32)     
     beta=0.4
     actors = [Actor.remote(pid=i, epsilon=epsilons[i], gamma=gamma, num_states=num_states, time_step=time_step) for i in range(num_actors)]
 
-    replay = Replay(buffer_size=2**20, save_dir=dir_name+"replay/")
+    replay = Replay(buffer_size=2**19, save_dir=dir_name+"replay/")
 
     learner = Learner.remote(num_states=num_states, time_step=time_step)
-    current_weights = ray.get(learner.define_network.remote())
+    define_ref = learner.define_network.remote()
+    current_weights = ray.get(define_ref)
+    free_ray_refs(define_ref)
     current_weights = ray.put(current_weights)
+    old_weight_refs = deque()
 
     tester = Tester.remote(num_states, time_step)
 
     wip_actors = [actor.rollout.remote(current_weights) for actor in actors]
 
-    #学習を始める前に，各Actorがエピソードを実行して経験を収集し、TD誤差を計算してリプレイバッファに追加する。
-    #この初期の経験が学習の開始に必要な多様なデータを提供する。
     for _ in range(30):
         finished, wip_actors = ray.wait(wip_actors, num_returns=1)
-        td_errors, transitions, pid = ray.get(finished[0])
+        result_ref = finished[0]
+        td_errors, transitions, pid = ray.get(result_ref)
         replay.add(td_errors, transitions)
+        free_ray_refs(result_ref)
+        del td_errors, transitions
         wip_actors.extend([actors[pid].rollout.remote(current_weights)])
 
     minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
-    wip_learner = learner.update_network.remote(minibatchs)
-    minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
+    minibatchs_ref = ray.put(minibatchs)
+    wip_learner = learner.update_network.remote(minibatchs_ref)
+    
     wip_tester = tester.test_play.remote(current_weights, dir_name, "0")
-
 
     update_cycles = 1
     actor_cycles = 0
     t=time.time()
 
-    #無限ループで学習継続
     while True:
         actor_cycles += 1
         
-        #Actorのロールアウトが完了するのを待ち、完了したActorからTD誤差と経験を取得してリプレイバッファに追加し、次のロールアウトを開始する。
         while True:  
             finished, wip_actors = ray.wait(wip_actors, num_returns=1, timeout=0)
             if (len(finished)>0):
-                td_errors, transitions, pid= ray.get(finished[0])
+                result_ref = finished[0]
+                td_errors, transitions, pid= ray.get(result_ref)
                 replay.add(td_errors, transitions)
+                free_ray_refs(result_ref)
+                del td_errors, transitions
                 wip_actors.extend([actors[pid].rollout.remote(current_weights)])
             else: break
 
         
         finished_learner, _ = ray.wait([wip_learner], timeout=0)
         
-        #Learnerのネットワーク更新が完了するのを待ち、完了したら更新された重みとTD誤差、優先度補正値を取得してリプレイバッファの優先度を更新し、
-        # 新しいミニバッチをサンプリングして次のネットワーク更新を開始する。
         if finished_learner:
-            current_weights, indices, td_errors, priority_correction = ray.get(finished_learner[0])
-            wip_learner = learner.update_network.remote(minibatchs)
-            current_weights = ray.put(current_weights)
-            #: 優先度の更新とminibatchの作成はlearnerよりも十分に速いという前提
+            learner_ref = finished_learner[0]
+            new_weights, indices, td_errors, priority_correction = ray.get(learner_ref)
+            
+            free_ray_refs(learner_ref)
+            free_ray_refs(minibatchs_ref)
+            
+            old_weight_refs.append(current_weights)
+            current_weights = ray.put(new_weights)
+            del new_weights
+            while len(old_weight_refs) > max(100, num_actors * 4):
+                free_ray_refs(old_weight_refs.popleft())
+            
             replay.update_priority(indices, td_errors, priority_correction)
+            del indices, td_errors, priority_correction
+            
             minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
+            minibatchs_ref = ray.put(minibatchs)
+            wip_learner = learner.update_network.remote(minibatchs_ref)
+            
             beta=min(beta+0.6/20000.0,1.0)
             update_cycles += 1
             actor_cycles = 0
-            print(f"learner {time.time()-t}, update_cycles: {update_cycles}, beta: {beta}")
+            
+            current_buffer_size = replay.buffer_size if replay.is_full else replay.count
+            print(f"learner {time.time()-t:.2f}s, update_cycles: {update_cycles}, beta: {beta:.5f}, buffer_size: {current_buffer_size} / {replay.buffer_size}")
             t=time.time()
 
             if update_cycles % 50 == 0:
-                test_score, file_name, full_rewoard = ray.get(wip_tester)
+                gc.collect()
+                mem = psutil.virtual_memory()
+                used_gb = (mem.total - mem.available) / (1024**3)
+                total_gb = mem.total / (1024**3)
+                print(f"==== [System Memory] 使用率: {mem.percent}% ({used_gb:.2f} GB / {total_gb:.2f} GB) ====")
+                process = psutil.Process(os.getpid())
+
+                print(
+                    "[Driver]",
+                    process.memory_info().rss / 1024**3
+                )
+                for actor in actors:
+                    memory_ref = actor.get_memory.remote()
+                    print(ray.get(memory_ref))
+                    free_ray_refs(memory_ref)
+
+                tester_ref = wip_tester
+                test_score, file_name, full_rewoard, tc0_reward = ray.get(tester_ref)
+                free_ray_refs(tester_ref)
                 print(file_name, test_score, beta)
                 history.append((update_cycles , test_score))
                 with open(dir_name + "history.csv", "a", newline="") as f:
@@ -441,10 +740,56 @@ def main(num_actors, gamma, num_states, time_step=1.0):
                 with open(dir_name + "history_f.csv", "a", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow((file_name , full_rewoard))
+                with open(dir_name + "history_0.csv", "a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow((file_name , tc0_reward))
                 wip_tester = tester.test_play.remote(current_weights, dir_name, str(update_cycles))
                 sys.stdout.flush()
 
+            # ▼【大改修】Actor, Learner, Tester を一斉に再生成（1000サイクルごと）
+            if update_cycles % 1000 == 0:
+                print(f"=== [Memory Reset] Actor, Learner, Testerを再生成します (update_cycles: {update_cycles}) ===")
+                
+                # 1. 進行中の全タスクをキャンセル（Actorタスクに force=True は使えないため外す）
+                try:
+                    for wip in wip_actors:
+                        ray.cancel(wip)
+                    ray.cancel(wip_tester)
+                    ray.cancel(wip_learner)
+                except Exception:
+                    pass
+                del wip_actors, wip_tester, wip_learner
+                free_ray_refs(minibatchs_ref)
+                
+                # 2. 古い全プロセスを強制終了して破棄
+                for actor in actors:
+                    ray.kill(actor)
+                ray.kill(learner)
+                ray.kill(tester)
+                del actors, learner, tester
+                
+                # 3. メインプロセスのゴミ箱を空にする
+                gc.collect()
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
+                
+                # 4. 全プロセスを新しいメモリ空間で再作成
+                actors = [Actor.remote(pid=i, epsilon=epsilons[i], gamma=gamma, num_states=num_states, time_step=time_step) for i in range(num_actors)]
+                learner = Learner.remote(num_states=num_states, time_step=time_step)
+                tester = Tester.remote(num_states, time_step)
+                
+                # 5. Learnerの初期化と「最新の重み」の完全引き継ぎ
+                ray.get(learner.define_network.remote())
+                ray.get(learner.set_weights.remote(current_weights))
+                
+                # 6. 各タスクを再開
+                wip_actors = [actor.rollout.remote(current_weights) for actor in actors]
+                wip_tester = tester.test_play.remote(current_weights, dir_name, str(update_cycles))
+                
+                minibatchs = [replay.sample_minibatch(batch_size=512, beta=beta) for _ in range(64)]
+                minibatchs_ref = ray.put(minibatchs)
+                wip_learner = learner.update_network.remote(minibatchs_ref)
+                
+                print("=== 全プロセスの再生成完了 ===")
 
 if __name__ == "__main__":
-    #main(num_actors=50, gamma=0.9975, num_states=9, time_step=1.0)
-    main(num_actors=5, gamma=0.9975, num_states=9, time_step=1.0)
+    main(num_actors=5, gamma=0.9975, num_states=19, time_step=1.0)

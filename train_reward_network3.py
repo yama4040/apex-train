@@ -6,18 +6,23 @@ import re
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Input, Dropout
-from tensorflow.keras.regularizers import l2
 from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.losses import Huber  # <--- 【追加】Huber Loss
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import joblib
 import matplotlib.pyplot as plt
 
 def custom_accuracy(y_true, y_pred):
-    # LLMの評価値と予測値のズレが 0.15 以内であれば「正解(1)」とする
-    tolerance = 0.15
-    correct_predictions = tf.cast(tf.abs(y_true - y_pred) <= tolerance, tf.float32)
+    """
+    分類問題用のカスタムAccuracy。
+    予測クラス（確率が最大のインデックス）と正解クラスのズレが
+    ±1クラス（元の0.1スケールで±0.1）以内であれば正解(1)とする。
+    """
+    true_class = tf.cast(tf.squeeze(y_true), tf.float32)
+    pred_class = tf.cast(tf.argmax(y_pred, axis=-1), tf.float32)
+    
+    tolerance = 1.5  # インデックスの差が1.5以下（実質±1クラス以内）
+    correct_predictions = tf.cast(tf.abs(true_class - pred_class) <= tolerance, tf.float32)
     return tf.reduce_mean(correct_predictions)
 
 def extract_limit_info(text):
@@ -70,7 +75,6 @@ def load_and_preprocess_data(csv_dir):
     
     print(f"{len(csv_files)}個のCSVファイルを読み込みます...")
     
-    # ▼▼▼ 【改修1】ヘッダに signal_speed を追加 ▼▼▼
     columns = ["time", "train_id", "phase", "current_notch", "holding_time", 
                "prev_notch", "prev_notch_duration", 
                "speed_limit", "signal_speed", "current_speed", 
@@ -93,26 +97,19 @@ def load_and_preprocess_data(csv_dir):
     # ▼▼▼ 派生特徴量の作成 ▼▼▼
     # =====================================================================
     
-    # 1. 速度と距離の余裕度
     df['margin_speed'] = df['speed_limit'] - df['current_speed']
     df['margin_stop_dist'] = df['dist_to_next_station'] - df['req_stop_dist']
-    
-    # ▼▼▼ 【改修2】現在速度とCBTC信号現示のマージンを追加 ▼▼▼
     df['margin_signal_speed'] = df['signal_speed'] - df['current_speed']
     
-   # 2. 要求巡航速度を必要平均速度の1.3倍に設定
-    # ▼▼▼ 修正: ゼロ割り・負の時間を防ぐ (最低1.0秒) ▼▼▼
     df['safe_time'] = df['time_to_next_station'].clip(lower=1.0)
     df['required_speed_mps'] = df['dist_to_next_station'] / df['safe_time']
     df['required_cruise_speed'] = (df['required_speed_mps'] * 3.6) * 1.3
     
-    # 3. ノコギリ運転のスコア化 (連続値化)
     hunting_condition = (df['holding_time'] < 5.0) & (df['prev_notch_duration'] < 5.0) & (df['current_notch'] != df['prev_notch'])
     df['hunting_score'] = np.where(hunting_condition, np.maximum(0.0, 5.0 - df['holding_time']) / 5.0, 0.0).astype(np.float32)
     
     # =====================================================================
     
-    # カテゴリ化とダミー変数化
     phase_categories = [
         "駅出発直後の加速フェーズ（20秒以内）", 
         "巡航フェーズ（駅間走行中）", 
@@ -136,33 +133,24 @@ def load_and_preprocess_data(csv_dir):
     df['next_limit_flag'], df['next_limit_dist'], df['next_limit_speed'] = zip(*df['next_limit_info'].apply(extract_limit_info))
     df['next_gradient_flag'], df['next_gradient_dist'], df['next_gradient_val'] = zip(*df['next_gradient_info'].apply(extract_gradient_info))
     
-    # 先行・後続情報
     forward_features = df['forward_info'].apply(extract_forward_info).apply(pd.Series)
     forward_features.columns = ['f_exist', 'f_distance', 'f_speed']
     backward_features = df['backward_info'].apply(extract_backward_info).apply(pd.Series)
     backward_features.columns = ['b_exist', 'b_distance', 'b_speed']
     df = pd.concat([df, forward_features, backward_features], axis=1)
     
-    # 相対速度 (km/h) ※プラスなら接近している
     df['f_relative_speed'] = df['current_speed'] - df['f_speed']
     df['b_relative_speed'] = df['b_speed'] - df['current_speed']
     
-    # ▼▼▼ 【改修4】 f_ttc, b_ttc の算出を削除 ▼▼▼
-    
-    # 異常値・極端な距離情報のクリッピング（NNのスケーリング崩れ防止）
-    df['dist_to_next_station'] = df['dist_to_next_station']
-    df['req_stop_dist'] = df['req_stop_dist']
     df['f_distance'] = df['f_distance'].clip(upper=2000.0)
     df['b_distance'] = df['b_distance'].clip(upper=2000.0)
     
-    # ▼▼▼ 【改修】学習特徴量の見直し ▼▼▼
     feature_cols = [
         'hold_coast', 'hold_accel', 'hold_decel', 
         'prev_notch_duration',
-        'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient', # signal_speed追加
-        # 派生特徴量
-        'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed_mps', 'required_cruise_speed', 'hunting_score', # margin_signal_speed追加
-        'f_relative_speed', 'b_relative_speed', # f_ttc, b_ttcを削除
+        'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient',
+        'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed_mps', 'required_cruise_speed', 'hunting_score',
+        'f_relative_speed', 'b_relative_speed',
         'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
         'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
         'f_exist', 'f_distance', 'f_speed',
@@ -170,45 +158,57 @@ def load_and_preprocess_data(csv_dir):
     ] + [col for col in df.columns if col.startswith('phase_') or col.startswith('current_notch_') or (col.startswith('prev_notch_') and col != 'prev_notch_duration')]
     
     X = df[feature_cols].values.astype(np.float32)
-    y = df['reward'].values.astype(np.float32).reshape(-1, 1)
+    
+    # ▼▼▼ 【変更】0.0~1.0の報酬を、0~10の整数クラスインデックスに変換 ▼▼▼
+    # np.round で安全に丸めた後、整数型(int32)にキャストします
+    y_continuous = df['reward'].values.astype(np.float32)
+    y_class = np.round(y_continuous * 10).astype(np.int32)
+    y = y_class.reshape(-1, 1)
     
     return X, y, feature_cols
 
 def build_model(input_dim):
-    # 表現力と安定性を高めたモデル設計
     model = Sequential([
         Input(shape=(input_dim,)),
         Dense(128, activation='relu'),
         Dropout(0.2),
         Dense(64, activation='relu'),
         Dense(32, activation='relu'),
-        Dense(1, activation='linear')
+        # ▼▼▼ 【変更】1次元出力(linear)から11次元出力(softmax)へ ▼▼▼
+        Dense(11, activation='softmax')
     ])
     
-    model.compile(optimizer='adam', loss=Huber(delta=1.0), metrics=['mae', custom_accuracy])
+    # ▼▼▼ 【変更】損失関数を交差エントロピー誤差に変更 ▼▼▼
+    model.compile(
+        optimizer='adam', 
+        loss='sparse_categorical_crossentropy', 
+        metrics=['accuracy', custom_accuracy]
+    )
     return model
 
 def plot_learning_curve(history):
     plt.figure(figsize=(12, 5))
     
+    # Lossのプロット
     plt.subplot(1, 2, 1)
-    plt.plot(history.history['loss'], label='Train Loss (Huber)')
-    plt.plot(history.history['val_loss'], label='Validation Loss (Huber)')
-    plt.title('Model Loss (Huber)')
+    plt.plot(history.history['loss'], label='Train Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.title('Model Loss (Crossentropy)')
     plt.ylabel('Loss')
     plt.xlabel('Epoch')
     plt.legend(loc='upper right')
     
+    # 精度(custom_accuracy)のプロット
     plt.subplot(1, 2, 2)
-    plt.plot(history.history['mae'], label='Train MAE')
-    plt.plot(history.history['val_mae'], label='Validation MAE')
-    plt.title('Model Mean Absolute Error (MAE)')
-    plt.ylabel('MAE')
+    plt.plot(history.history['custom_accuracy'], label='Train Custom Acc')
+    plt.plot(history.history['val_custom_accuracy'], label='Validation Custom Acc')
+    plt.title('Model Accuracy (Tolerance: ±0.1)')
+    plt.ylabel('Accuracy')
     plt.xlabel('Epoch')
-    plt.legend(loc='upper right')
+    plt.legend(loc='upper left')
     
     plt.tight_layout()
-    plt.savefig('learning_curve_direct.png') 
+    plt.savefig('learning_curve_classification.png') 
     plt.show() 
 
 def main():
@@ -216,6 +216,7 @@ def main():
     
     X, y, feature_cols = load_and_preprocess_data(csv_dir)
     print(f"入力特徴量次元数: {X.shape[1]}")
+    print(f"クラスラベルの分布:\n{pd.Series(y.flatten()).value_counts().sort_index()}")
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     print(f"学習データ数: {X_train.shape[0]}, テストデータ数: {X_test.shape[0]}")
@@ -240,9 +241,10 @@ def main():
     
     plot_learning_curve(history)
     
-    model.save('direct_reward_model.h5')
-    joblib.dump(scaler, 'direct_reward_scaler.pkl')
-    print("モデル('direct_reward_model.h5')とスケーラー('direct_reward_scaler.pkl')を保存しました。")
+    # 保存名も分類モデルであることがわかるように変更
+    model.save('classification_reward_model.h5')
+    joblib.dump(scaler, 'classification_reward_scaler.pkl')
+    print("モデル('classification_reward_model.h5')とスケーラー('classification_reward_scaler.pkl')を保存しました。")
 
 if __name__ == "__main__":
     main()

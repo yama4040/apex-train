@@ -6,12 +6,20 @@ import os
 # ==========================================
 # 設定項目
 # ==========================================
-# 出発駅の位置(km)。環境に合わせて変更してください。
-# 出発駅の位置(km) : 羽前成田
 START_POSITION = 21.112
-
-# 制限速度データ(speed_limit.csv)のパス
 SPEED_LIMIT_CSV = "./input/speed_limit.csv"
+
+# 新しいCSVヘッダの定義（全32列）
+CSV_HEADERS = [
+    "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time",
+    "raw_pre_act", "raw_stat_dist_2", "raw_fw_dist", "raw_cbtc_signal",
+    "norm_speed", "norm_stat_dist_wide", "norm_stat_dist_zoom",
+    "norm_rem_time", "norm_hold_time", "norm_pre_act_c", "norm_pre_act_a",
+    "norm_pre_act_d", "norm_fw_dist", "norm_cbtc_signal", "norm_speed_limit",
+    "norm_req_stop_dist", "norm_margin_stop_dist", "phase_accel",
+    "phase_cruise", "phase_limit", "phase_decel", "phase_stop",
+    "norm_fw_speed", "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward"
+]
 # ==========================================
 
 def calc_tractive_force(speed):
@@ -27,27 +35,19 @@ def evaluate_csv(csv_path, start_position, speed_limit_path):
     FACTOR_OF_INERTIA = 28.34467
 
     try:
-        # まず通常のヘッダありを想定して読み込む
         df = pd.read_csv(csv_path)
         
         # 'raw_speed' という列名が存在しない場合、ヘッダなしCSVと判断する
         if 'raw_speed' not in df.columns:
-            # ヘッダなしとして再読み込み
             df = pd.read_csv(csv_path, header=None)
             
-            # 列数が足りない場合はエラー
-            if len(df.columns) < 5:
-                print("エラー: CSVの列数が不足しています。")
+            # 列数が一致するか確認してマッピング
+            if len(df.columns) == len(CSV_HEADERS):
+                df.columns = CSV_HEADERS
+            else:
+                print(f"エラー: CSVの列数({len(df.columns)})が新ヘッダの定義({len(CSV_HEADERS)})と一致しません。")
                 return
                 
-            # environment.py の raw_state 定義に従って必要な列に名前を割り当てる
-            df = df.rename(columns={
-                0: 'raw_speed',
-                1: 'raw_stat_dist',
-                2: 'raw_rem_time',
-                4: 'raw_pre_action'
-            })
-            
     except Exception as e:
         print(f"ファイルの読み込みに失敗しました: {e}")
         return
@@ -65,13 +65,13 @@ def evaluate_csv(csv_path, start_position, speed_limit_path):
     violation_count = 0
     is_violating = False 
 
-    # 初期状態の取得
-    prev_action = df.loc[0, 'raw_pre_action']
+    # 初期状態の取得 (raw_pre_action -> raw_pre_act に変更)
+    prev_action = df.loc[0, 'raw_pre_act']
     initial_dist = df.loc[0, 'raw_stat_dist']
 
     for i in range(1, len(df)):
         current_speed = df.loc[i, 'raw_speed']
-        current_action = df.loc[i, 'raw_pre_action']
+        current_action = df.loc[i, 'raw_pre_act']
         current_rem_dist = df.loc[i, 'raw_stat_dist']
         
         # 現在位置の推定
@@ -126,6 +126,5 @@ def evaluate_csv(csv_path, start_position, speed_limit_path):
     print("===============================\n")
     
 if __name__ == "__main__":
-    # コマンドライン引数でファイル名を指定可能 (例: python eval.py data.csv)
-    target_csv = sys.argv[1] if len(sys.argv) > 1 else "comp/25650_0.csv"
+    target_csv = sys.argv[1] if len(sys.argv) > 1 else "comp/9550_0.csv"
     evaluate_csv(target_csv, START_POSITION, SPEED_LIMIT_CSV)

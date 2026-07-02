@@ -1,3 +1,8 @@
 data/
 .env
 __pycache__/
+評価用csv/
+評価済ログ/
+dataset（0～1.0）/
+dataset（-1.0～1.0）/
+train_reward_csv_direct/
