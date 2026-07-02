@@ -5,8 +5,9 @@ import numpy as np
 import re
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Input, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.layers import Dense, Input, Dropout, BatchNormalization, Activation
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import joblib
@@ -168,20 +169,35 @@ def load_and_preprocess_data(csv_dir):
     return X, y, feature_cols
 
 def build_model(input_dim):
+    # ▼▼▼ 【変更】過学習対策として、L2正則化・BatchNormalization・各層へのDropoutを追加し、
+    #      ネットワーク規模もデータ量に対して過大にならないよう縮小 ▼▼▼
+    l2_reg = l2(1e-3)
     model = Sequential([
         Input(shape=(input_dim,)),
-        Dense(128, activation='relu'),
+
+        Dense(64, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
+        Dropout(0.4),
+
+        Dense(32, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
+        Dropout(0.3),
+
+        Dense(16, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
         Dropout(0.2),
-        Dense(64, activation='relu'),
-        Dense(32, activation='relu'),
-        # ▼▼▼ 【変更】1次元出力(linear)から11次元出力(softmax)へ ▼▼▼
+
+        # ▼▼▼ 1次元出力(linear)から11次元出力(softmax)へ ▼▼▼
         Dense(11, activation='softmax')
     ])
-    
-    # ▼▼▼ 【変更】損失関数を交差エントロピー誤差に変更 ▼▼▼
+
+    # ▼▼▼ 損失関数を交差エントロピー誤差に変更 ▼▼▼
     model.compile(
-        optimizer='adam', 
-        loss='sparse_categorical_crossentropy', 
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+        loss='sparse_categorical_crossentropy',
         metrics=['accuracy', custom_accuracy]
     )
     return model
@@ -198,11 +214,13 @@ def plot_learning_curve(history):
     plt.xlabel('Epoch')
     plt.legend(loc='upper right')
     
-    # 精度(custom_accuracy)のプロット
+    # 精度(accuracy / custom_accuracy)のプロット
     plt.subplot(1, 2, 2)
-    plt.plot(history.history['custom_accuracy'], label='Train Custom Acc')
-    plt.plot(history.history['val_custom_accuracy'], label='Validation Custom Acc')
-    plt.title('Model Accuracy (Tolerance: ±0.1)')
+    plt.plot(history.history['accuracy'], label='Train Accuracy', color='tab:blue', linestyle='-')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy', color='tab:orange', linestyle='-')
+    plt.plot(history.history['custom_accuracy'], label='Train Custom Acc (±1class)', color='tab:blue', linestyle='--')
+    plt.plot(history.history['val_custom_accuracy'], label='Validation Custom Acc (±1class)', color='tab:orange', linestyle='--')
+    plt.title('Model Accuracy (Exact vs Tolerance: ±0.1)')
     plt.ylabel('Accuracy')
     plt.xlabel('Epoch')
     plt.legend(loc='upper left')
@@ -227,15 +245,18 @@ def main():
     
     model = build_model(X_train_scaled.shape[1])
     
-    early_stop = EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
-    
+    # ▼▼▼ 【変更】過学習が進む前に止められるようpatienceを短縮し、
+    #      val_lossが停滞した時点で学習率を下げるReduceLROnPlateauを追加 ▼▼▼
+    early_stop = EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=6, min_lr=1e-6, verbose=1)
+
     print("学習を開始します...")
     history = model.fit(
         X_train_scaled, y_train,
         validation_data=(X_test_scaled, y_test),
         epochs=500,
         batch_size=64,
-        callbacks=[early_stop],
+        callbacks=[early_stop, reduce_lr],
         verbose=1
     )
     
