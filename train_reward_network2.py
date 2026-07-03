@@ -5,14 +5,18 @@ import numpy as np
 import re
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Input, Dropout
+from tensorflow.keras.layers import Dense, Input, Dropout, BatchNormalization, Activation
 from tensorflow.keras.regularizers import l2
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.losses import Huber  # <--- 【追加】Huber Loss
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import joblib
 import matplotlib.pyplot as plt
+
+# ▼▼▼ 【修正】重み付けの効果検証時に結果がぶれないよう乱数シードを固定 ▼▼▼
+np.random.seed(42)
+tf.random.set_seed(42)
 
 def custom_accuracy(y_true, y_pred):
     # LLMの評価値と予測値のズレが 0.15 以内であれば「正解(1)」とする
@@ -175,18 +179,55 @@ def load_and_preprocess_data(csv_dir):
     return X, y, feature_cols
 
 def build_model(input_dim):
-    # 表現力と安定性を高めたモデル設計
+    # ▼▼▼ 【修正】出力が0~1の範囲から大きく外れる(-1.0付近に張り付く等)不安定な学習を防ぐため、
+    #      BatchNormalization・L2正則化・段階的Dropoutで各層の出力レンジを安定させる。
+    #      回帰問題のため出力層はsigmoidにせず線形(linear)のまま維持し、
+    #      代わりに学習の安定化側で0~1レンジへの収束を促す。
+    l2_reg = l2(1e-4)
     model = Sequential([
         Input(shape=(input_dim,)),
-        Dense(128, activation='relu'),
+
+        Dense(128, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
+        Dropout(0.3),
+
+        Dense(64, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
         Dropout(0.2),
-        Dense(64, activation='relu'),
-        Dense(32, activation='relu'),
+
+        Dense(32, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
+        Dropout(0.1),
+
         Dense(1, activation='linear')
     ])
-    
-    model.compile(optimizer='adam', loss=Huber(delta=1.0), metrics=['mae', custom_accuracy])
+
+    # ▼▼▼ 【修正】勾配クリッピングを追加し、外れ値的な入力による重みの急激な発散を抑制 ▼▼▼
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1.0)
+    model.compile(optimizer=optimizer, loss=Huber(delta=1.0), metrics=['mae', custom_accuracy])
     return model
+
+def compute_bin_sample_weights(y):
+    """
+    0.1刻みのラベル区間ごとの出現頻度の逆数を重みとして算出する。
+    件数の少ない区間（例: 1.0付近）が損失関数上で過小評価されるのを防ぐ。
+    1.0帯の精度を優先するため、緩和(sqrt)や上限クリップは行わず
+    単純な逆頻度重み付けとする（0.9帯等が多少過小評価される副作用は許容）。
+    重みの平均が1.0になるよう正規化し、学習率など他のハイパーパラメータへの
+    影響を最小限に抑える。
+    """
+    bin_idx = np.clip(np.round(y.flatten() * 10).astype(np.int32), 0, 10)
+    bin_counts = np.bincount(bin_idx, minlength=11).astype(np.float32)
+    bin_counts[bin_counts == 0] = 1.0  # ゼロ割り防止
+
+    inv_freq = 1.0 / bin_counts
+    sample_weight = inv_freq[bin_idx]
+    sample_weight = sample_weight / sample_weight.mean()
+    return sample_weight.astype(np.float32), bin_idx
+
 
 def plot_learning_curve(history):
     plt.figure(figsize=(12, 5))
@@ -216,25 +257,36 @@ def main():
     
     X, y, feature_cols = load_and_preprocess_data(csv_dir)
     print(f"入力特徴量次元数: {X.shape[1]}")
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # ▼▼▼ 【修正】0.1刻みのラベル区間で層化(stratify)し、
+    #      1.0付近など件数の少ない区間が検証データに偏らないようにする ▼▼▼
+    _, bin_idx_all = compute_bin_sample_weights(y)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=bin_idx_all
+    )
     print(f"学習データ数: {X_train.shape[0]}, テストデータ数: {X_test.shape[0]}")
-    
+
+    # ▼▼▼ 【修正】少数派ラベル(1.0付近など)の損失への寄与を高める重み ▼▼▼
+    train_sample_weight, _ = compute_bin_sample_weights(y_train)
+
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
-    
+
     model = build_model(X_train_scaled.shape[1])
-    
+
     early_stop = EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
-    
+    # ▼▼▼ 【修正】val_lossが停滞したら学習率を下げ、局所解での発散/停滞を防ぐ ▼▼▼
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=10, min_lr=1e-6, verbose=1)
+
     print("学習を開始します...")
     history = model.fit(
         X_train_scaled, y_train,
+        sample_weight=train_sample_weight,
         validation_data=(X_test_scaled, y_test),
         epochs=500,
         batch_size=64,
-        callbacks=[early_stop],
+        callbacks=[early_stop, reduce_lr],
         verbose=1
     )
     
