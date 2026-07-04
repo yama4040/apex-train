@@ -73,19 +73,30 @@ def load_and_preprocess_data(csv_dir):
         raise FileNotFoundError(f"ディレクトリ '{csv_dir}' にCSVファイルが見つかりません。")
     
     print(f"{len(csv_files)}個のCSVファイルを読み込みます...")
-    
-    # ▼▼▼ 【改修1】ヘッダに signal_speed を追加 ▼▼▼
-    columns = ["time", "train_id", "phase", "current_notch", "holding_time", 
-               "prev_notch", "prev_notch_duration", 
-               "speed_limit", "signal_speed", "current_speed", 
-               "dist_to_next_station", "time_to_next_station", "req_stop_dist", "delay", "current_gradient", 
-               "next_limit_info", "next_gradient_info", "forward_info", "backward_info", "reward", "reason"]
-    
+
+    # ▼▼▼ 【改修】required_speed（必要速度）列の存在を前提に、実ファイルのヘッダをそのまま使用する ▼▼▼
+    # 固定の列名リストで位置決め読み込みをすると、required_speed列の有無でファイルごとに
+    # 列がずれて破損するため、各CSV自身のヘッダから列名を読み取る方式に変更している。
     df_list = []
+    skipped_files = []
     for file in csv_files:
-        temp_df = pd.read_csv(file, names=columns, skiprows=1)
+        temp_df = pd.read_csv(file, encoding='utf-8-sig')
+        if 'required_speed' not in temp_df.columns:
+            skipped_files.append(os.path.basename(file))
+            continue
         df_list.append(temp_df)
-    
+
+    if skipped_files:
+        print(f"[警告] 'required_speed'列が存在しない旧形式のため除外したファイル ({len(skipped_files)}件): {skipped_files}")
+        print("       最新のapex.py / evaluate_csv_with_llm.pyでCSVを再生成してください。")
+
+    if not df_list:
+        raise ValueError(
+            f"'{csv_dir}' 内に 'required_speed' 列を含む有効なCSVがありません。"
+            "train_reward_csv_direct内のデータは旧形式（required_speed列なし）のため、"
+            "最新のapex.pyで学習データを再収集してから実行してください。"
+        )
+
     df = pd.concat(df_list, ignore_index=True)
     print(f"合計データ数: {len(df)}行")
     
@@ -104,12 +115,13 @@ def load_and_preprocess_data(csv_dir):
     # ▼▼▼ 【改修2】現在速度とCBTC信号現示のマージンを追加 ▼▼▼
     df['margin_signal_speed'] = df['signal_speed'] - df['current_speed']
     
-   # 2. 要求巡航速度を必要平均速度の1.3倍に設定
-    # ▼▼▼ 修正: ゼロ割り・負の時間を防ぐ (最低1.0秒) ▼▼▼
-    df['safe_time'] = df['time_to_next_station'].clip(lower=1.0)
-    df['required_speed_mps'] = df['dist_to_next_station'] / df['safe_time']
-    df['required_cruise_speed'] = (df['required_speed_mps'] * 3.6) * 1.3
-    
+    # 2. 必要速度（CSVに保存済みの物理シミュレーションベースの値をそのまま使用）
+    #    加速にかかる時間・惰行による自然減速・ブレーキ特性を考慮した値であり、
+    #    単純な平均速度×1.3という近似（旧required_cruise_speed）はもう使用しない。
+    # 現在速度と必要速度との差。正なら必要速度に届いておらず力行継続が必要、
+    # 負なら必要速度を超えており惰行への移行余地があることを示す。
+    df['speed_margin_to_required'] = df['current_speed'] - df['required_speed']
+
     # 3. ノコギリ運転のスコア化 (連続値化)
     hunting_condition = (df['holding_time'] < 5.0) & (df['prev_notch_duration'] < 5.0) & (df['current_notch'] != df['prev_notch'])
     df['hunting_score'] = np.where(hunting_condition, np.maximum(0.0, 5.0 - df['holding_time']) / 5.0, 0.0).astype(np.float32)
@@ -165,7 +177,7 @@ def load_and_preprocess_data(csv_dir):
         'prev_notch_duration',
         'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient', # signal_speed追加
         # 派生特徴量
-        'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed_mps', 'required_cruise_speed', 'hunting_score', # margin_signal_speed追加
+        'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed', 'speed_margin_to_required', 'hunting_score', # margin_signal_speed追加
         'f_relative_speed', 'b_relative_speed', # f_ttc, b_ttcを削除
         'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
         'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',

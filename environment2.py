@@ -6,6 +6,8 @@ import pandas as pd
 import codecs
 import math
 
+from required_speed import calculate_required_speed
+
 # 単一評価値予測器をインポート
 try:
     from direct_reward_predictor import DirectRewardPredictor
@@ -154,24 +156,37 @@ class Environment:
             req_dist_val = fallback_req_dist
             # ▲▲▲ 追加ここまで ▲▲▲
 
+            current_gradient_val = self.train.front_grades[0]["grade"] if len(self.train.front_grades) > 0 else 0.0
+
+            # ▼▼▼ 追加: 必要速度（巡航速度）の算出。evaluate_csv_with_llm.pyと同一ロジック（required_speed.py） ▼▼▼
+            required_speed_val = calculate_required_speed(
+                current_speed=self.speed,
+                dist_to_next_station=self.station_remaining_distance * 1000.0,
+                time_to_next_station=self.remaining_time,
+                speed_limit=self.current_speed_limit,
+                current_gradient=current_gradient_val,
+            )
+            # ▲▲▲ 追加ここまで ▲▲▲
+
             # ▼▼▼ 【重要修正】'signal_speed' を追加して報酬予測側へ渡す ▼▼▼
             state_info = {
                 'speed_limit': self.current_speed_limit,
                 'signal_speed': self.cbtc_signal_speed,  # <--- 【追加】CBTC指示速度
                 'current_speed': self.speed,
-                'dist_to_next_station': self.station_remaining_distance * 1000.0, 
-                'time_to_next_station': self.remaining_time,  
+                'required_speed': required_speed_val,  # <--- 【追加】必要速度（巡航速度）
+                'dist_to_next_station': self.station_remaining_distance * 1000.0,
+                'time_to_next_station': self.remaining_time,
                 'req_stop_dist': req_dist_val,
-                'holding_time': current_holding_time, 
+                'holding_time': current_holding_time,
                 'prev_notch': get_prev_notch_str(current_prev_notch),
                 'prev_notch_duration': current_prev_duration,
                 'delay': max(0.0, self.t - self.fixed_running_time),
-                'current_gradient': self.train.front_grades[0]["grade"] if len(self.train.front_grades) > 0 else 0.0,
+                'current_gradient': current_gradient_val,
                 'phase': self._get_current_phase_str(),
-                'current_notch': self._get_current_notch_str(action_enum), 
+                'current_notch': self._get_current_notch_str(action_enum),
                 'next_limit_info': self._get_next_limit_info(),
                 'next_gradient_info': self._get_next_gradient_info(),
-                'forward_info': forward_info_str, 
+                'forward_info': forward_info_str,
                 'backward_info': "後続列車なし"
             }
             try:

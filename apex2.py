@@ -30,6 +30,7 @@ from model import QNetwork
 
 from environment2 import Environment
 from actions import Actions
+from required_speed import calculate_required_speed
 import random
 import sys
 
@@ -426,10 +427,10 @@ class Tester:
             f_llm = open(os.path.join(llm_dir, f"{file_name}_{ci}_llm.csv"), "w", newline="", encoding="utf-8")
             llm_writer = csv.writer(f_llm)
             llm_header = [
-                "time", "train_id", "phase", "current_notch", "holding_time", 
-                "prev_notch", "prev_notch_duration", "speed_limit", "signal_speed", 
-                "current_speed", "dist_to_next_station", "time_to_next_station", 
-                "req_stop_dist", "delay", "current_gradient", "next_limit_info", 
+                "time", "train_id", "phase", "current_notch", "holding_time",
+                "prev_notch", "prev_notch_duration", "speed_limit", "signal_speed",
+                "current_speed", "required_speed", "dist_to_next_station", "time_to_next_station",
+                "req_stop_dist", "delay", "current_gradient", "next_limit_info",
                 "next_gradient_info", "forward_info", "backward_info", "reward"
             ]
             llm_writer.writerow(llm_header)
@@ -533,16 +534,25 @@ class Tester:
                     next_gradient_info_str = env._get_next_gradient_info()
 
                 backward_info_str = "後続列車なし"
+
+                # 必要速度（巡航速度）の算出。evaluate_csv_with_llm.pyと同一ロジック（required_speed.py）
+                required_speed = calculate_required_speed(
+                    current_speed=current_speed,
+                    dist_to_next_station=dist_to_next_station,
+                    time_to_next_station=time_to_next_station,
+                    speed_limit=speed_limit,
+                    current_gradient=current_gradient,
+                )
                 # =================================================================
-                
+
                 tri_drive_info = getattr(env, 'latest_rewards_info', [])
                 t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info]
                 writer.writerow(t_state)
-                
+
                 # ▼▼▼【追加】LLM評価用CSVに行データを書き込み ▼▼▼
                 llm_row = [
                     current_t,
-                    "Train11",             
+                    "Train11",
                     phase_str,
                     current_notch_str,
                     holding_time,
@@ -551,6 +561,7 @@ class Tester:
                     speed_limit,
                     signal_speed,
                     current_speed,
+                    round(required_speed, 1),
                     dist_to_next_station,
                     time_to_next_station,
                     req_stop_dist,
@@ -560,7 +571,7 @@ class Tester:
                     next_gradient_info_str,
                     forward_info_str,
                     backward_info_str,
-                    reward                 
+                    reward
                 ]
                 llm_writer.writerow(llm_row)
                 # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
