@@ -36,6 +36,7 @@ def _call_openai_api_with_retry(prompt_text: str, max_retries: int = 3) -> str:
                 ],
                 temperature=0.0,
                 timeout=90.0,
+                extra_body={"reasoning_effort": "low"},
             )
             print("    [APIレスポンス受信成功！]")
             return response.choices[0].message.content
