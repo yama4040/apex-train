@@ -2,8 +2,9 @@ import os
 import glob
 import csv
 import json
+import re
 import time
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Optional, Tuple
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -15,58 +16,71 @@ load_dotenv()
 # 1. LLM API呼び出し関数（リトライ機能付き）
 # ==========================================
 
-def _call_openai_api_with_retry(prompt_text: str, max_retries: int = 3) -> str:
-    """API通信処理（エラー時やフリーズ時の自動リトライ機能付き）"""
+def _call_openai_api_once(prompt_text: str) -> str:
+    """API通信処理を1回だけ実行する（リトライなし）"""
     api_key = os.getenv("LLM_API_KEY")
     base_url = os.getenv("LLM_API_URL")
-    
+
     if not api_key or not base_url:
-        return "APIキー未設定によるダミー"
-    
+        raise RuntimeError("APIキー未設定")
+
     client = OpenAI(api_key=api_key, base_url=base_url)
-    
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[
+            {"role": "system", "content": "あなたは列車の自動運転制御を評価するエキスパートです。必ず指示されたJSONフォーマットのみを出力してください。"},
+            {"role": "user", "content": prompt_text}
+        ],
+        temperature=0.0,
+        timeout=90.0,
+        extra_body={"reasoning_effort": "medium"},
+    )
+    return response.choices[0].message.content
+
+def _parse_eval_json(result_text: str) -> Dict[str, Any]:
+    """LLM応答からJSONを抽出する。末尾カンマなど軽微なフォーマット崩れは自動修復してから読む。"""
+    clean_text = result_text.strip().replace("```json", "").replace("```", "")
+    try:
+        return json.loads(clean_text)
+    except json.JSONDecodeError:
+        # 「, }」「, ]」のような末尾カンマを除去して再試行
+        repaired = re.sub(r",(\s*[}\]])", r"\1", clean_text)
+        return json.loads(repaired)
+
+def call_llm_for_eval(prompt_text: str, max_retries: int = 3) -> Tuple[str, Optional[float]]:
+    """直接評価モード用。通信エラー・レスポンスのフォーマット崩れのどちらでも
+    同じリトライ回数の中でAPI呼び出しからやり直す（フォーマット崩れの応答をそのまま解析しても
+    意味がないため）。最大リトライ回数を超えても解消しない場合はreward=Noneを返す。"""
+    last_error = "不明なエラー"
     for attempt in range(max_retries):
+        print(f"    [APIリクエスト送信中... (試行 {attempt + 1}/{max_retries})]")
         try:
-            print(f"    [APIリクエスト送信中... (試行 {attempt + 1}/{max_retries})]")
-            response = client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=[
-                    {"role": "system", "content": "あなたは列車の自動運転制御を評価するエキスパートです。必ず指示されたJSONフォーマットのみを出力してください。"},
-                    {"role": "user", "content": prompt_text}
-                ],
-                temperature=0.0,
-                timeout=90.0,
-                extra_body={"reasoning_effort": "low"},
-            )
+            result_text = _call_openai_api_once(prompt_text)
             print("    [APIレスポンス受信成功！]")
-            return response.choices[0].message.content
         except Exception as e:
             print(f"    [API通信エラー]: {e}")
+            last_error = f"通信エラー: {e}"
             if attempt < max_retries - 1:
                 sleep_time = 5 * (attempt + 1)
                 print(f"    -> {sleep_time}秒後に再試行します...")
                 time.sleep(sleep_time)
-            else:
-                print("    -> 最大リトライ回数に達したため、この行の評価をスキップ（0.0）します。")
-                return f"エラー発生: {e}"
+            continue
 
-def call_llm_for_eval(prompt_text: str) -> Tuple[str, float]:
-    """直接評価モード用"""
-    result_text = _call_openai_api_with_retry(prompt_text)
-    if result_text.startswith("エラー発生") or result_text.startswith("APIキー未設定"):
-        return result_text, 0.0
+        try:
+            eval_data = _parse_eval_json(result_text)
+            reason = eval_data.get("reason", "理由の出力なし")
+            reward = float(eval_data.get("reward", 0.0))
+            reward = max(-1.0, min(1.0, reward))
+            return reason, reward
+        except Exception as e:
+            print(f"    [LLM解析エラー]: {e}\nレスポンス内容: {result_text}")
+            last_error = f"解析エラー: {e}"
+            if attempt < max_retries - 1:
+                print("    -> フォーマット不正のため再試行します...")
+                time.sleep(2.0)
 
-    try:
-        clean_text = result_text.strip().replace("```json", "").replace("```", "")
-        eval_data = json.loads(clean_text)
-        reason = eval_data.get("reason", "理由の出力なし")
-        reward = float(eval_data.get("reward", 0.0))
-        #reward = max(0.0, min(1.0, reward))
-        reward = max(-1.0, min(1.0, reward))
-        return reason, reward
-    except Exception as e:
-        print(f"    [LLM解析エラー]: {e}\nレスポンス内容: {result_text}")
-        return f"解析エラー: {e}", 0.0
+    print("    -> 最大リトライ回数に達したため、この行の評価は失敗として扱います（rewardは付与しません）。")
+    return f"評価失敗（要再処理）: {last_error}", None
 
 # ==========================================
 # 2. プロンプト生成関数
@@ -348,12 +362,19 @@ def process_csv_files(input_dir="評価用csv", output_dir="評価済ログ"):
     ]
 
     output_csv_path = os.path.join(output_dir, "llm_evaluated_dataset.csv")
+    failed_csv_path = os.path.join(output_dir, "llm_evaluation_failed_rows.csv")
 
     # 【修正】ファイルの存在チェックを外し、実行のたびに必ず新規ファイルとして作成してヘッダを書き込む（前回のデータは上書きリセットされます）
     with open(output_csv_path, mode='w', newline='', encoding='utf-8-sig') as f_init:
         writer = csv.writer(f_init)
         writer.writerow(headers)
     print(f"出力ファイル '{output_csv_path}' を新規作成し、ヘッダを書き込みました。")
+
+    # 通信エラー・フォーマット崩れが最大リトライ回数を超えても解消しなかった行を退避するファイル
+    # （reward=0.0として本来のデータセットに混入させると、正常な低評価と区別できなくなるため）
+    with open(failed_csv_path, mode='w', newline='', encoding='utf-8-sig') as f_init:
+        writer = csv.writer(f_init)
+        writer.writerow(["source_file"] + headers)
 
     for file_path in csv_files:
         print(f"\n=== 処理開始: {os.path.basename(file_path)} ===")
@@ -408,13 +429,20 @@ def process_csv_files(input_dir="評価用csv", output_dir="評価済ログ"):
                     features["next_gradient_info"], features["forward_info"],
                     features["backward_info"], reward, reason
                 ]
-                
-                # 1行評価するごとに追記モードで開いて保存
-                with open(output_csv_path, mode='a', newline='', encoding='utf-8-sig') as f_out:
-                    writer = csv.writer(f_out)
-                    writer.writerow(out_row)
-                
-                time.sleep(1.0) 
+
+                if reward is None:
+                    # 最大リトライ回数を超えても評価に失敗した行は本データセットに含めず退避する
+                    print("    [警告] この行は評価に失敗したため、メインデータセットには含めず退避しました。")
+                    with open(failed_csv_path, mode='a', newline='', encoding='utf-8-sig') as f_fail:
+                        writer = csv.writer(f_fail)
+                        writer.writerow([os.path.basename(file_path)] + out_row)
+                else:
+                    # 1行評価するごとに追記モードで開いて保存
+                    with open(output_csv_path, mode='a', newline='', encoding='utf-8-sig') as f_out:
+                        writer = csv.writer(f_out)
+                        writer.writerow(out_row)
+
+                time.sleep(1.0)
 
         print(f"=== 処理完了: {os.path.basename(file_path)} ===")
     print(f"\n全ての評価が完了しました。")
