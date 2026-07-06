@@ -5,7 +5,7 @@ import os
 import re
 
 class DirectRewardPredictor:
-    def __init__(self, model_path='direct_reward_model.h5', scaler_path='direct_reward_scaler.pkl'):
+    def __init__(self, model_path='direct_reward_model2.h5', scaler_path='direct_reward_scaler2.pkl'):
         if os.path.exists(model_path) and os.path.exists(scaler_path):
             self.model = tf.keras.models.load_model(model_path, compile=False)
             self.scaler = joblib.load(scaler_path)
@@ -23,12 +23,12 @@ class DirectRewardPredictor:
         
         # 特徴量カラムの並び順（train_reward_network2.py と完全一致）
         self.feature_cols = [
-            'hold_coast', 'hold_accel', 'hold_decel', 
+            'hold_coast', 'hold_accel', 'hold_decel',
             'prev_notch_duration',
-            'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 
+            'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station',
             'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient',
-            'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 
-            'required_speed_mps', 'required_cruise_speed', 'hunting_score',
+            'margin_speed', 'margin_signal_speed', 'margin_stop_dist',
+            'required_speed', 'speed_margin_to_required', 'hunting_score',
             'f_relative_speed', 'b_relative_speed',
             'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
             'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
@@ -61,13 +61,12 @@ class DirectRewardPredictor:
         margin_speed = s['speed_limit'] - s['current_speed']
         margin_signal_speed = s['signal_speed'] - s['current_speed']
         margin_stop_dist = s['dist_to_next_station'] - s['req_stop_dist']
-        
-       # ▼▼▼ 修正: 時間が0以下になることによる要求速度の計算爆発を防ぐ ▼▼▼
-        safe_time = max(1.0, s['time_to_next_station'])
-        req_speed_mps = s['dist_to_next_station'] / safe_time
-        req_cruise_speed = (req_speed_mps * 3.6) * 1.3
-        # ▲▲▲ 修正ここまで ▲▲▲
-        
+
+        # 必要速度（environment2.pyがrequired_speed.pyで算出済みの値をそのまま使用）。
+        # 現在速度との差が正なら必要速度未達（力行継続が必要）、負なら惰行への移行余地があることを示す。
+        required_speed = s['required_speed']
+        speed_margin_to_required = s['current_speed'] - required_speed
+
         # ノコギリ運転スコア化
         is_hunting = (s['holding_time'] < 5.0) and (s['prev_notch_duration'] < 5.0) and (s['current_notch'] != s['prev_notch'])
         hunting_score = max(0.0, 5.0 - s['holding_time']) / 5.0 if is_hunting else 0.0
@@ -105,8 +104,8 @@ class DirectRewardPredictor:
             'margin_speed': margin_speed,
             'margin_signal_speed': margin_signal_speed,
             'margin_stop_dist': margin_stop_dist,
-            'required_speed_mps': req_speed_mps,
-            'required_cruise_speed': req_cruise_speed,
+            'required_speed': required_speed,
+            'speed_margin_to_required': speed_margin_to_required,
             'hunting_score': hunting_score,
             'f_relative_speed': f_rel_speed,
             'b_relative_speed': b_rel_speed,

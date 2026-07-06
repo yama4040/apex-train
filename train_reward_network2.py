@@ -304,9 +304,9 @@ def main():
     
     plot_learning_curve(history)
     
-    model.save('direct_reward_model.h5')
-    joblib.dump(scaler, 'direct_reward_scaler.pkl')
-    print("モデル('direct_reward_model.h5')とスケーラー('direct_reward_scaler.pkl')を保存しました。")
+    model.save('direct_reward_model2.h5')
+    joblib.dump(scaler, 'direct_reward_scaler2.pkl')
+    print("モデル('direct_reward_model2.h5')とスケーラー('direct_reward_scaler2.pkl')を保存しました。")
 
 if __name__ == "__main__":
     main()

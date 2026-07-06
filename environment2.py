@@ -10,7 +10,7 @@ from required_speed import calculate_required_speed
 
 # 単一評価値予測器をインポート
 try:
-    from direct_reward_predictor import DirectRewardPredictor
+    from direct_reward_predictor2 import DirectRewardPredictor
 except ImportError:
     DirectRewardPredictor = None
 
@@ -313,6 +313,25 @@ class Environment:
                 direction = "上り" if next_grade > 0 else "下り"
                 return f"{int(dist_km*1000)}m先に{direction}勾配{abs(next_grade)}‰あり"
         return "この先目立った勾配なし"
+
+    # --- DQN観測ベクトル用の数値版ヘルパー（0.5km以内に変化がなければNoneを返す） ---
+    def _get_next_limit_numeric(self):
+        sections = self.train.front_sections
+        if len(sections) > 1:
+            dist_km = sections[0]["distance"]
+            next_limit = sections[1]["speed_limit"]
+            if dist_km <= 0.5:
+                return dist_km, next_limit
+        return None, None
+
+    def _get_next_gradient_numeric(self):
+        grades = self.train.front_grades
+        if len(grades) > 1:
+            dist_km = grades[0]["distance"]
+            next_grade = grades[1]["grade"]
+            if dist_km <= 0.5:
+                return dist_km, next_grade
+        return None, None
     
     def _calc_brake_distance(self, test_speed):
         """
@@ -359,7 +378,7 @@ class Environment:
     def latest_rewards_info(self):
         return [self.last_llm_reward]
 
-    # --- ▼▼▼ 【重要修正】DQN用観測ベクトルを10次元に拡張 ▼▼▼ ---
+    # --- ▼▼▼ 【重要修正】DQN用観測ベクトルを25次元に拡張 ▼▼▼ ---
     @property
     def normalized_state(self):
         # 1. 既存の行動フラグ
@@ -380,7 +399,17 @@ class Environment:
         phase_4 = 1.0 if phase_str == "次駅への減速フェーズ（駅手前400m以内）" else 0.0
         phase_5 = 1.0 if phase_str == "駅停車完了（速度0km/h）" else 0.0
 
-        # 4. 観測ベクトルの構築（合計 19次元）
+        # 4. 勾配・この先の制限速度変化・直前操作の継続時間（新規追加分）
+        current_gradient = self.train.front_grades[0]["grade"] if len(self.train.front_grades) > 0 else 0.0
+        next_grade_dist, next_grade_val = self._get_next_gradient_numeric()
+        next_limit_dist, next_limit_val = self._get_next_limit_numeric()
+        # 該当なしの場合は「0.5km先までの変化なし」「現在値から変化なし」を意味する値をデフォルトにする
+        next_grade_dist_norm = (next_grade_dist / 0.5) if next_grade_dist is not None else 1.0
+        next_grade_val_final = next_grade_val if next_grade_val is not None else current_gradient
+        next_limit_dist_norm = (next_limit_dist / 0.5) if next_limit_dist is not None else 1.0
+        next_limit_val_final = next_limit_val if next_limit_val is not None else self.current_speed_limit
+
+        # 5. 観測ベクトルの構築（合計 25次元）
         # ※各値はニューラルネットワークが学習しやすいよう、おおよそ -1.0 〜 1.0 または 0.0 〜 1.0 にスケーリングしています
         return np.array([
             # --- 既存の入力（一部スケーリング見直し） ---
@@ -393,7 +422,7 @@ class Environment:
             pre_action_a,                                                    # 7. 直前の行動（加速）
             pre_action_d,                                                    # 8. 直前の行動（減速）
             (max(self.fowerd_train_remaining_distance, -0.5) + 0.5) / 2.0,   # 9. 先行列車までの距離
-            
+
             # --- 新規追加の入力 ---
             self.cbtc_signal_speed / 80.0,                                   # 10. CBTCの信号現示
             self.current_speed_limit / 80.0,                                 # 11. 路線制限速度
@@ -404,7 +433,15 @@ class Environment:
             phase_3,                                                         # 16. フェーズ：制限接近
             phase_4,                                                         # 17. フェーズ：減速
             phase_5,                                                         # 18. フェーズ：停車完了
-            f_speed / 80.0                                                   # 19. 先行列車の速度
+            f_speed / 80.0,                                                  # 19. 先行列車の速度
+
+            # --- 勾配・この先の制限速度変化・直前操作継続時間（今回追加） ---
+            np.clip(current_gradient / 40.0, -1.0, 1.0),                     # 20. 現在の勾配
+            next_grade_dist_norm,                                            # 21. この先の勾配変化までの距離（0.5km換算、変化なしなら1.0）
+            np.clip(next_grade_val_final / 40.0, -1.0, 1.0),                 # 22. この先の勾配値（変化なしなら現在の勾配と同値）
+            next_limit_dist_norm,                                            # 23. この先の制限速度変化までの距離（0.5km換算、変化なしなら1.0）
+            next_limit_val_final / 80.0,                                     # 24. この先の制限速度（変化なしなら現在の制限速度と同値）
+            min(self.prev_notch_duration, 30.0) / 30.0                       # 25. 直前操作（1つ前のノッチ）の継続時間
         ], dtype=np.float32)
 
     @property
