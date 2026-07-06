@@ -33,7 +33,7 @@ def _call_openai_api_once(prompt_text: str) -> str:
         ],
         temperature=0.0,
         timeout=90.0,
-        extra_body={"reasoning_effort": "medium"},
+        extra_body={"reasoning_effort": "low"},
     )
     return response.choices[0].message.content
 
