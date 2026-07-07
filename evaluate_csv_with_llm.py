@@ -25,6 +25,7 @@ def _call_openai_api_once(prompt_text: str) -> str:
         raise RuntimeError("APIキー未設定")
 
     client = OpenAI(api_key=api_key, base_url=base_url)
+    start = time.time()
     response = client.chat.completions.create(
         model="openai/gpt-oss-120b",
         messages=[
@@ -33,8 +34,10 @@ def _call_openai_api_once(prompt_text: str) -> str:
         ],
         temperature=0.0,
         timeout=90.0,
-        #extra_body={"reasoning_effort": "low"},
+        extra_body={"reasoning_effort": "low"},
     )
+    elapsed = time.time() - start
+    print(f"    [応答時間: {elapsed:.2f}秒]")
     return response.choices[0].message.content
 
 def _parse_eval_json(result_text: str) -> Dict[str, Any]:
