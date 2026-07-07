@@ -108,10 +108,17 @@ def build_dummy_real_prompt() -> str:
         speed_limit=features["speed_limit"],
         current_gradient=features["current_gradient"],
     )
+    features["delta_stop"] = features["dist_to_next_station"] - features["req_stop_dist"]
     return generate_eval_prompt(features)
 
 
 if __name__ == "__main__":
+    # まず適当な短いプロンプトでAPIが正常に応答するかを確認する。
+    sanity_result = call_and_measure("疎通確認（短いプロンプト）", "こんにちは。挨拶だけ返してください。")
+    if sanity_result.get("error"):
+        print("\n短いプロンプトへの応答に失敗したため、以降の処理を中断します。")
+        raise SystemExit(1)
+
     # reasoning_effortの度合いによる速度・評価結果の差を比較する。
     # default(サーバー既定=フルパワー)は271秒かけて504になることが既に判明しているため、
     # 必要であればEFFORT_LEVELSの先頭に None を追加して比較対象に含めること（数分待つ覚悟が必要）。
