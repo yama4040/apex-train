@@ -123,8 +123,10 @@ def load_and_preprocess_data(csv_dir):
     df['speed_margin_to_required'] = df['current_speed'] - df['required_speed']
 
     # 3. ノコギリ運転のスコア化 (連続値化)
-    hunting_condition = (df['holding_time'] < 5.0) & (df['prev_notch_duration'] < 5.0) & (df['current_notch'] != df['prev_notch'])
-    df['hunting_score'] = np.where(hunting_condition, np.maximum(0.0, 5.0 - df['holding_time']) / 5.0, 0.0).astype(np.float32)
+    # 閾値はLLM評価プロンプトのノコギリ判定と同じ7秒。
+    # direct_reward_predictor2.py（推論側）の特徴量エンジニアリングと完全に一致させること。
+    hunting_condition = (df['holding_time'] < 7.0) & (df['prev_notch_duration'] < 7.0) & (df['current_notch'] != df['prev_notch'])
+    df['hunting_score'] = np.where(hunting_condition, np.maximum(0.0, 7.0 - df['holding_time']) / 7.0, 0.0).astype(np.float32)
     
     # =====================================================================
     

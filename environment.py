@@ -338,12 +338,12 @@ class Environment:
             # 式(3): 走行抵抗の計算
             travel_res = 2.39 + 0.0224 * sim_speed + 0.00062 * (sim_speed**2)
             
-            # ▼▼▼ train.pyと全く同じ運動方程式の実装 ▼▼▼
-            # ブレーキ時の力 (Force) として train.DECELERATE を代入
-            force = train.DECELERATE
-            
-            # 式(2): 加速度 accel [km/h/s] の算出
-            accel = ((((force - travel_res) * train.WEIGTH_CORRECTION) - (grade_res + curve_res)) / train.FACTOR_OF_INERTIA)
+            # ▼▼▼ 修論 式(4.1) u=1 と同じ構造の運動方程式（train.pyのstep()と一致） ▼▼▼
+            # dv/dt = DECELERATE/kw - (Rr/kw + Rg + Rc)/28.34467 （WEIGTH_CORRECTION = 1/kw に相当）
+            # ※旧実装はDECELERATEを引張力[kg/t]として式に代入していたが、
+            #   DECELERATEは減速度[km/h/s]そのものであるため誤りだった。
+            accel = ((((0 - travel_res) * train.WEIGTH_CORRECTION) - (grade_res + curve_res)) / train.FACTOR_OF_INERTIA)
+            accel += train.DECELERATE * train.WEIGTH_CORRECTION
             
             # 速度の更新: 速度 [km/h] += 加速度 [km/h/s] * 時間 [s]
             sim_speed += accel * time_step

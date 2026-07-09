@@ -30,7 +30,7 @@ from model import QNetwork
 
 from environment2 import Environment
 from actions import Actions
-from required_speed import calculate_required_speed
+from required_speed import calculate_required_speed, brake_stop_distance_m
 import random
 import sys
 
@@ -469,9 +469,11 @@ class Tester:
                 time_to_next_station = max(env.remaining_time, 0.0)
                 
                 # 要求停止距離の計算（environment2.py の推論側と完全同期）
-                v_ms = max(0.0, current_speed / 3.6)
-                decel_ms2 = 2.5 / 3.6
-                req_stop_dist = (v_ms ** 2) / (2 * decel_ms2) + (v_ms * getattr(env, 'time_step', 1.0))
+                # train.pyの実ダイナミクス（減速ノッチ2.5km/h/s＋走行抵抗＋勾配抵抗）と一致する
+                # モデル（required_speed.py）に統一。旧実装の「2.5km/h/s一定＋空走」モデルは
+                # 抵抗・勾配を無視しており実挙動と乖離していたため廃止。
+                pre_step_gradient = env.train.front_grades[0]["grade"] if len(env.train.front_grades) > 0 else 0.0
+                req_stop_dist = brake_stop_distance_m(current_speed, pre_step_gradient)
                 
                 # 先行列車情報のテキスト化
                 if env.fowerd_train_position is not None:
@@ -511,9 +513,11 @@ class Tester:
                 prev_notch_duration = getattr(env, 'prev_notch_duration', 0.0)
 
                 # 運転フェーズのテキスト逆生成
+                # （出発遅延がある場合、env.tは遅延分から開始するため経過時間で判定する）
+                elapsed_t = current_t - getattr(env, 'episode_start_t', 0.0)
                 if dist_to_next_station <= 10.0 and current_speed <= 0.1:
                     phase_str = "駅停車完了（速度0km/h）"
-                elif current_t <= 20.0:
+                elif elapsed_t <= 20.0:
                     phase_str = "駅出発直後の加速フェーズ（20秒以内）"
                 elif dist_to_next_station <= 400.0:
                     phase_str = "次駅への減速フェーズ（駅手前400m以内）"
@@ -565,7 +569,8 @@ class Tester:
                     dist_to_next_station,
                     time_to_next_station,
                     req_stop_dist,
-                    max(0.0, env.t - env.fixed_running_time),
+                    # 標準運転時間を過ぎてから何秒経ったか（残り時間が-10秒ならdelay=10秒）
+                    env.current_delay,
                     current_gradient,
                     next_limit_info_str,
                     next_gradient_info_str,

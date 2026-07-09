@@ -6,7 +6,7 @@ import pandas as pd
 import codecs
 import math
 
-from required_speed import calculate_required_speed
+from required_speed import calculate_required_speed, brake_stop_distance_m
 
 # 単一評価値予測器をインポート
 try:
@@ -74,18 +74,35 @@ class Environment:
                 self.fowerd_train = None
                 print(f"\n[警告] {fowerd_train_controls} 先行列車なしとして扱います。")
                 
-        if (self.fowerd_train_position is not None or start_position_offset != 0.0):
+        # 標準走行曲線（計画ダイヤ）は現在位置基準の遅延計算にも使用するため常にロードする
+        self.standerd_running = []
+        try:
             sr_csv = self.read_csv(f"./input/sr_{departure_index}.csv")
-            self.standerd_running = []
             for i in range(len(sr_csv)):
                 self.standerd_running.append({"position": sr_csv["position"][i], "time": sr_csv["time"][i]})
+        except Exception:
+            # 標準走行曲線が無い区間では位置基準の遅延計算をスキップする（従来定義で代用）
+            pass
+
         if (start_position_offset != 0.0):
-            for i in range(len(self.standerd_running)):
-                self.t = self.standerd_running[i]["time"] + delay
-                break
-                
-        self.pre_action = Actions.deceleration  
-        self.holding_time = 30  
+            # 駅間途中から発車する場合は、開始位置に対応する計画通過時刻＋出発遅延を初期時刻とする
+            # （旧実装は標準走行曲線の先頭行の時刻を使っており、開始位置と時刻が対応していなかった）
+            scheduled = self._scheduled_time_at(start_position)
+            self.t = (scheduled if scheduled is not None else 0.0) + delay
+        else:
+            # 駅から発車する場合も出発遅延を初期時刻に反映する
+            # （旧実装ではdelay引数が無視されており、遅延ありのシナリオが機能していなかった）
+            self.t = delay
+
+        # フェーズ判定（駅出発直後20秒以内）用にエピソード開始時刻を保持する
+        self.episode_start_t = self.t
+
+        # 停滞（ちんたら運転）検出用のチェックポイント
+        self._stall_check_t = self.t
+        self._stall_check_pos = self.train.position
+
+        self.pre_action = Actions.deceleration
+        self.holding_time = 30
         # ▼▼▼ 新規追加: 直前のノッチ操作と保持時間の初期化 ▼▼▼
         self.prev_notch = None # 初期状態
         self.prev_notch_duration = 0.0
@@ -149,14 +166,14 @@ class Environment:
             else:
                 forward_info_str = "先行列車なし"
 
-            # ▼▼▼ 追加: 要求ブレーキ距離の計算 ▼▼▼
-            v_ms = max(0.0, self.speed / 3.6)
-            decel_ms2 = 2.5 / 3.6
-            fallback_req_dist = (v_ms ** 2) / (2 * decel_ms2) + (v_ms * self.time_step)
-            req_dist_val = fallback_req_dist
-            # ▲▲▲ 追加ここまで ▲▲▲
-
             current_gradient_val = self.train.front_grades[0]["grade"] if len(self.train.front_grades) > 0 else 0.0
+
+            # ▼▼▼ 要求ブレーキ距離の計算 ▼▼▼
+            # train.pyの実ダイナミクス（減速ノッチ2.5km/h/s＋走行抵抗＋勾配抵抗）と一致する
+            # 物理モデル（required_speed.py）で算出し、LLM評価データセット
+            # （evaluate_csv_with_llm.py）・apex2.pyのCSV出力と完全に統一する。
+            req_dist_val = brake_stop_distance_m(self.speed, current_gradient_val)
+            # ▲▲▲ ここまで ▲▲▲
 
             # ▼▼▼ 追加: 必要速度（巡航速度）の算出。evaluate_csv_with_llm.pyと同一ロジック（required_speed.py） ▼▼▼
             required_speed_val = calculate_required_speed(
@@ -175,12 +192,13 @@ class Environment:
                 'current_speed': self.speed,
                 'required_speed': required_speed_val,  # <--- 【追加】必要速度（巡航速度）
                 'dist_to_next_station': self.station_remaining_distance * 1000.0,
-                'time_to_next_station': self.remaining_time,
+                # 残り時間は0でクリップし、超過分はdelayで表現する（apex2.pyのCSV出力と同一の扱い）
+                'time_to_next_station': max(0.0, self.remaining_time),
                 'req_stop_dist': req_dist_val,
                 'holding_time': current_holding_time,
                 'prev_notch': get_prev_notch_str(current_prev_notch),
                 'prev_notch_duration': current_prev_duration,
-                'delay': max(0.0, self.t - self.fixed_running_time),
+                'delay': self.current_delay,
                 'current_gradient': current_gradient_val,
                 'phase': self._get_current_phase_str(),
                 'current_notch': self._get_current_notch_str(action_enum),
@@ -229,34 +247,64 @@ class Environment:
         
 
         # --- 3. 最終的な報酬の合算 ---
+        # 【制約】報酬はLLMを蒸留したNNの出力のみとする（時間ペナルティや終端ボーナス等の
+        # 環境側の報酬加算は禁止）。ちんたら運転などの問題行動への対処は、
+        # LLM評価プロンプトのルール（ちんたら運転=0.0）と下記のエピソード終了条件で行う。
         reward = llm_reward
-        
+
         # --- 4. エピソード終了条件 ---
+        goal_reached = False
+        failed = False  # 分析・ログ用（報酬には使用しない）
+
         # ① タイムオーバー（大幅な遅延）
         if self.t >= self.departure_station["running_time"] + 60.0:
             done = True
-            
+            failed = True
+
         # ② 目標達成（駅の許容範囲内に停止）
         # -10m(0.01km) 〜 +5m(0.005km) の範囲で速度0になったら無事到着として終了
         if self.position >= self.arrival_station["position"] - 0.01 and self.position <= self.arrival_station["position"] + 0.005 and self.speed <= 0.0:
             done = True
-            
+            goal_reached = True
+
         # ③ 先行列車への異常接近・衝突判定
         if self.fowerd_train_position is not None and self.speed <= 0.0 and self.position >= self.fowerd_train_position - 0.05:
             done = True
+            failed = True
 
         # ④ オーバーラン判定（駅を通り過ぎた）
         # 駅の許容停止位置（+5m）を越えて走っている場合は即終了
         if self.speed > 0.0 and self.position > self.arrival_station["position"] + 0.005:
             done = True
-            
+            failed = True
+
         # ⑤ 【重要】手前での停止（ショートオーバーラン）
         # 駅に届いていない（-10m未満）のに速度が0になってしまった場合
         if self.speed <= 0.0 and self.position < self.arrival_station["position"] - 0.01:
             # ただし、先行列車がいて、その手前で止まった場合は正しい「信号待ち」なので除外
             if self.fowerd_train_position is None or self.position < self.fowerd_train_position - 0.1:
                 done = True  # 即座にエピソードを打ち切る
-        
+                failed = True
+
+        # ⑥ 【追加】停滞（ちんたら運転）検出
+        # 極低速で走り続ければ「速度0」の判定（⑤）を回避してエピソードを引き延ばせて
+        # しまうため（実測では平均2.4km/hの匍匐走行が観測された）、進捗ベースで打ち切る。
+        if self.t - self._stall_check_t >= 30.0:
+            progress = self.position - self._stall_check_pos
+            if not goal_reached:
+                if self.fowerd_train_position is None:
+                    # 先行列車がいない場合: 30秒で25m未満（平均3km/h未満）の前進はちんたら運転
+                    if progress < 0.025:
+                        done = True
+                        failed = True
+                elif self.position < self.fowerd_train_position - 0.1 and progress < 0.005:
+                    # 先行列車がいる場合: 信号待ちの可能性があるため、ほぼ完全な停滞（30秒で
+                    # 5m未満）のみを対象とし、先行列車の直後（100m以内）での待機は除外する
+                    done = True
+                    failed = True
+            self._stall_check_t = self.t
+            self._stall_check_pos = self.position
+
         """
         # 60秒以上遅延した場合，10m以内に停車，先行列車の手前で停止できた（50メートル手前）場合，エピソード終了
         if self.t >= self.departure_station["running_time"] + 60.0:
@@ -281,7 +329,8 @@ class Environment:
 
     # --- LLM推論用の状態テキスト生成ヘルパー群 ---
     def _get_current_phase_str(self):
-        if self.t <= 20.0:
+        # 出発遅延がある場合もエピソード開始からの経過時間で判定する
+        if self.t - getattr(self, 'episode_start_t', 0.0) <= 20.0:
             return "駅出発直後の加速フェーズ（20秒以内）"
         elif self.station_remaining_distance <= 0.4:
             return "次駅への減速フェーズ（駅手前400m以内）"
@@ -353,12 +402,12 @@ class Environment:
             # 式(3): 走行抵抗の計算
             travel_res = 2.39 + 0.0224 * sim_speed + 0.00062 * (sim_speed**2)
             
-            # ▼▼▼ train.pyと全く同じ運動方程式の実装 ▼▼▼
-            # ブレーキ時の力 (Force) として train.DECELERATE を代入
-            force = train.DECELERATE
-            
-            # 式(2): 加速度 accel [km/h/s] の算出
-            accel = ((((force - travel_res) * train.WEIGTH_CORRECTION) - (grade_res + curve_res)) / train.FACTOR_OF_INERTIA)
+            # ▼▼▼ 修論 式(4.1) u=1 と同じ構造の運動方程式（train.pyのstep()と一致） ▼▼▼
+            # dv/dt = DECELERATE/kw - (Rr/kw + Rg + Rc)/28.34467 （WEIGTH_CORRECTION = 1/kw に相当）
+            # ※旧実装はDECELERATEを引張力[kg/t]として式に代入していたが、
+            #   DECELERATEは減速度[km/h/s]そのものであるため誤りだった。
+            accel = ((((0 - travel_res) * train.WEIGTH_CORRECTION) - (grade_res + curve_res)) / train.FACTOR_OF_INERTIA)
+            accel += train.DECELERATE * train.WEIGTH_CORRECTION
             
             # 速度の更新: 速度 [km/h] += 加速度 [km/h/s] * 時間 [s]
             sim_speed += accel * time_step
@@ -497,6 +546,30 @@ class Environment:
             if (self.fowerd_train_position < self.standerd_running[i]["position"]):
                 return self.standerd_running[i]["time"]
         return self.departure_station["running_time"]
+
+    def _scheduled_time_at(self, position_km):
+        """標準走行曲線（計画ダイヤ）から指定位置の計画通過時刻[s]を線形補間で求める。
+        標準走行曲線が無い場合はNoneを返す。"""
+        sr = getattr(self, 'standerd_running', None)
+        if not sr:
+            return None
+        if position_km <= sr[0]["position"]:
+            return sr[0]["time"]
+        for i in range(1, len(sr)):
+            if position_km <= sr[i]["position"]:
+                p0, t0 = sr[i - 1]["position"], sr[i - 1]["time"]
+                p1, t1 = sr[i]["position"], sr[i]["time"]
+                if p1 <= p0:
+                    return t1
+                return t0 + (t1 - t0) * (position_km - p0) / (p1 - p0)
+        return sr[-1]["time"]
+
+    @property
+    def current_delay(self):
+        """標準運転時間を過ぎてから何秒経ったか[s]。
+        駅間走行の残り時間（remaining_time）が負になった場合、その絶対値が遅延時間となる
+        （例：残り時間が-10秒ならdelay=10秒）。残り時間がある間は0。"""
+        return max(0.0, -self.remaining_time)
 
     @property
     def current_speed_limit(self):

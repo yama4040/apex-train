@@ -67,9 +67,10 @@ class DirectRewardPredictor:
         required_speed = s['required_speed']
         speed_margin_to_required = s['current_speed'] - required_speed
 
-        # ノコギリ運転スコア化
-        is_hunting = (s['holding_time'] < 5.0) and (s['prev_notch_duration'] < 5.0) and (s['current_notch'] != s['prev_notch'])
-        hunting_score = max(0.0, 5.0 - s['holding_time']) / 5.0 if is_hunting else 0.0
+        # ノコギリ運転スコア化（閾値はLLM評価プロンプトのノコギリ判定と同じ7秒。
+        # train_reward_network2.pyの特徴量エンジニアリングと完全に一致させること）
+        is_hunting = (s['holding_time'] < 7.0) and (s['prev_notch_duration'] < 7.0) and (s['current_notch'] != s['prev_notch'])
+        hunting_score = max(0.0, 7.0 - s['holding_time']) / 7.0 if is_hunting else 0.0
         
         # テキスト情報のパース
         nl_flag, nl_dist, nl_speed = self._extract_limit_info(s['next_limit_info'])

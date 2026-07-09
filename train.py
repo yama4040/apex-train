@@ -15,7 +15,10 @@ def get_shared_track():
 class Train(object):
     def __init__(self, target_station, position=0, speed=0,weight_correction=1.0):
         self.time_step_base=0.01
-        self.DECELERATE = -2.4/10*360
+        # 制動時 dv/dt = DECELERATE - (Rr+Rg+Rc)/28.34467 [km/h/s]（修論 式(3.2)と同じ構造）
+        # ブレーキノッチによる減速度は標準的な常用ブレーキ相当の 2.5 km/h/s とする。
+        # （旧実装の -2.4/10*360 (=-86.4) に time_step_base(0.01) を掛けた実効値 -0.864 km/h/s は誤り）
+        self.DECELERATE = -2.5
         self.TRAIN_WEIGHT = 28  # 列車重量
         #self.FACTOR_OF_INERTIA = 28.34391294  
         self.FACTOR_OF_INERTIA = 28.34467  
@@ -39,9 +42,10 @@ class Train(object):
             accel = ((((force - self.travel_resistance)*self.WEIGTH_CORRECTION)-(self.grade_resistance+self.curve_resistance))/self.FACTOR_OF_INERTIA)
             res = self.travel_resistance+self.grade_resistance+self.curve_resistance
             base_accel = ((force - res)/self.FACTOR_OF_INERTIA)
-            if (action==Actions.deceleration): 
-                accel+=self.DECELERATE*self.time_step_base*self.WEIGTH_CORRECTION
-                base_accel+=self.DECELERATE*self.time_step_base
+            if (action==Actions.deceleration):
+                # 修論 式(4.1)と同じ構造：制動項は DECELERATE/kw（WEIGTH_CORRECTION = 1/kw に相当）
+                accel+=self.DECELERATE*self.WEIGTH_CORRECTION
+                base_accel+=self.DECELERATE
             if self.speed + accel * self.time_step_base >= 0:
                 self.__position += (self.__speed / 3600) * self.time_step_base + 1 * (accel /3600) * (self.time_step_base**2)
                 self.__speed += accel * self.time_step_base
@@ -142,9 +146,9 @@ class Train(object):
             # 1. 現在の速度における走行抵抗を計算（ここで速度低下に伴う抵抗減衰が反映される）
             travel_res = 2.39 + 0.0224 * sim_speed + 0.00062 * (sim_speed**2)
 
-            # 2. シミュレータと同じ減速度の算出
+            # 2. シミュレータと同じ減速度の算出（修論 式(4.1) u=1）
             accel = ((((0 - travel_res) * self.WEIGTH_CORRECTION) - (grade_res + curve_res)) / self.FACTOR_OF_INERTIA)
-            accel += self.DECELERATE * self.time_step_base * self.WEIGTH_CORRECTION
+            accel += self.DECELERATE * self.WEIGTH_CORRECTION
 
             # 加速してしまう異常状態の防止
             if accel >= 0:

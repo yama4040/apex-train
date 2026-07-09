@@ -10,4 +10,5 @@
 - 作成したニューラルネットワークを報酬関数としてApex-Trainに組み込む
 - train_reward_network2.pyは出力値を回帰問題としている
 - train_reward_network3.pyは出力値を分類問題としている
-- 回帰問題のNNを適用しているのがapex2.py，分類問題のNNを適用しているのがapex.pyである
+- 回帰問題のNNを適用しているのがapex2.py，分類問題のNNを適用しているのがapex3.pyである
+- apex2.pyを基本的に使用して研究を行っていく

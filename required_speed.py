@@ -17,9 +17,16 @@ from typing import Tuple
 # train.py（apex系スクリプト実行時に使用される物理モデル）と同一の定数
 FACTOR_OF_INERTIA = 28.34467
 WEIGHT_CORRECTION = 1.0     # apex系スクリプト実行時のデフォルト重量補正（Environment.resetの既定値）
-BRAKE_DECEL_MS2 = 2.5 / 3.6  # apex系スクリプトがreq_stop_dist算出に用いる簡易ブレーキ減速度[m/s^2]
 SIM_DT = 0.25                # シミュレーション刻み幅[s]
 SIM_MAX_TIME = 400.0         # シミュレーションの安全上限[s]
+
+# 減速ノッチによるブレーキ減速度[km/h/s]
+# 制動時 dv/dt = -BRAKE_NOTCH_DECEL_KMHS - (Rr+Rg+Rc)/28.34467（修論 式(3.2)と同じ構造）
+# 標準的な常用ブレーキ相当の 2.5 km/h/s（train.pyのDECELERATEと同一の値であること）
+BRAKE_NOTCH_DECEL_KMHS = 2.5
+BRAKE_TABLE_DV = 0.25        # ブレーキ停止距離テーブルの速度刻み[km/h]
+ARRIVAL_TOL_M = 5.0          # シミュレーション上の到達判定の許容誤差[m]
+                             # （オイラー積分の離散化誤差により数m手前で停止扱いになる場合があるため）
 
 def tractive_force(speed_kmh: float) -> float:
     """引張力[kg/t]（train.pyのtractive_forceと同一の特性曲線）"""
@@ -34,13 +41,57 @@ def travel_resistance(speed_kmh: float) -> float:
     """走行抵抗[kg/t]（train.pyのtravel_resistanceと同一）"""
     return 2.39 + 0.0224 * speed_kmh + 0.00062 * (speed_kmh ** 2)
 
-def brake_stop_distance_m(speed_kmh: float) -> float:
+def _brake_decel_kmh_s(speed_kmh: float, grade_resistance: float) -> float:
+    """
+    減速ノッチ使用時の実効減速度[km/h/s]（正の値）。
+    train.pyのstep()と同一の運動方程式（修論 式(3.2)/(4.1)と同じ構造）：
+      dv/dt = -BRAKE_NOTCH_DECEL_KMHS * WC - (Rr * WC + Rg) / FACTOR_OF_INERTIA  （WC = 1/kw）
+    ※曲線抵抗は情報が無いため省略（影響は小さい）
+    """
+    decel = (BRAKE_NOTCH_DECEL_KMHS * WEIGHT_CORRECTION
+             + (travel_resistance(speed_kmh) * WEIGHT_CORRECTION + grade_resistance) / FACTOR_OF_INERTIA)
+    # 急な下り勾配でも発散しないよう最低限の減速度を保証する
+    return max(decel, 0.05)
+
+def brake_stop_distance_m(speed_kmh: float, grade_resistance: float = 0.0) -> float:
     """
     現在速度からブレーキを開始し停止するまでに要する距離[m]。
-    apex系スクリプトがreq_stop_distの算出に用いている簡易減速モデル（減速度2.5km/h/s相当）と同一のもの。
+    train.pyの実ダイナミクス（減速ノッチ2.5km/h/s＋走行抵抗＋勾配抵抗）と一致するモデル。
     """
-    v_ms = max(0.0, speed_kmh / 3.6)
-    return (v_ms ** 2) / (2 * BRAKE_DECEL_MS2)
+    v = max(0.0, speed_kmh)
+    dist = 0.0
+    while v > 1e-9:
+        step = min(BRAKE_TABLE_DV, v)
+        v_mid = v - step / 2.0
+        dt = step / _brake_decel_kmh_s(v_mid, grade_resistance)
+        dist += (v_mid / 3.6) * dt
+        v -= step
+    return dist
+
+def _build_brake_table(v_max_kmh: float, grade_resistance: float) -> list:
+    """
+    0からv_max_kmhまでBRAKE_TABLE_DV刻みの停止距離テーブル[m]を1回の積分で構築する。
+    simulate_trip_time内で毎ステップ停止距離を参照するための高速化用。
+    """
+    table = [0.0]
+    v = 0.0
+    while v < v_max_kmh:
+        v_mid = v + BRAKE_TABLE_DV / 2.0
+        dt = BRAKE_TABLE_DV / _brake_decel_kmh_s(v_mid, grade_resistance)
+        table.append(table[-1] + (v_mid / 3.6) * dt)
+        v += BRAKE_TABLE_DV
+    return table
+
+def _lookup_brake_dist(table: list, speed_kmh: float) -> float:
+    """テーブルの線形補間により停止距離[m]を返す"""
+    if speed_kmh <= 0.0:
+        return 0.0
+    idx = speed_kmh / BRAKE_TABLE_DV
+    lo = int(idx)
+    if lo + 1 >= len(table):
+        return table[-1]
+    frac = idx - lo
+    return table[lo] * (1.0 - frac) + table[lo + 1] * frac
 
 def simulate_trip_time(v0_kmh: float, target_cruise_kmh: float, distance_m: float, grade_resistance: float = 0.0) -> Tuple[float, float]:
     """
@@ -55,6 +106,9 @@ def simulate_trip_time(v0_kmh: float, target_cruise_kmh: float, distance_m: floa
     dist = 0.0
     phase = "accel" if speed < target_cruise_kmh else "coast"
 
+    # 停止距離テーブルを事前構築（下り勾配での惰行加速により目標速度を多少超える余地を持たせる）
+    brake_table = _build_brake_table(max(v0_kmh, target_cruise_kmh) + 15.0, grade_resistance)
+
     steps = int(SIM_MAX_TIME / SIM_DT)
     for _ in range(steps):
         remaining = distance_m - dist
@@ -65,7 +119,8 @@ def simulate_trip_time(v0_kmh: float, target_cruise_kmh: float, distance_m: floa
 
         if phase == "accel" and speed >= target_cruise_kmh:
             phase = "coast"
-        if phase == "coast" and brake_stop_distance_m(speed) >= remaining:
+        # 加速中でも停止距離が残距離に達したら即ブレーキへ移行する（短距離での過走を防止）
+        if phase != "brake" and _lookup_brake_dist(brake_table, speed) >= remaining:
             phase = "brake"
 
         if phase == "accel":
@@ -77,7 +132,7 @@ def simulate_trip_time(v0_kmh: float, target_cruise_kmh: float, distance_m: floa
         elif phase == "coast":
             accel = (-(travel_resistance(speed) + grade_resistance) * WEIGHT_CORRECTION) / FACTOR_OF_INERTIA
         else:  # brake
-            accel = -BRAKE_DECEL_MS2 * 3.6  # m/s^2 -> km/h/s換算
+            accel = -_brake_decel_kmh_s(speed, grade_resistance)  # train.pyと同一のブレーキ特性
 
         speed = max(0.0, speed + accel * SIM_DT)
         dist += (speed / 3.6) * SIM_DT
@@ -92,7 +147,7 @@ def calculate_required_speed(current_speed: float, dist_to_next_station: float, 
 
     「駅までの残り距離」と「残り時間」から平均速度を求めてその1.3〜1.4倍とする簡易近似ではなく、
     実際の加速特性（tractive_force）・惰行時の自然減速（travel_resistance）・
-    ブレーキ特性（apex系スクリプトのreq_stop_distモデル）を反映した走行シミュレーションにより、
+    ブレーキ特性（train.pyの減速ノッチと同一の実効減速度モデル）を反映した走行シミュレーションにより、
     「この速度まで力行し、その後惰行に切り替えれば定時運行できる」という巡航速度を二分探索で求める。
     現在速度のまま惰行に切り替えても定時運行可能な場合は、それ以上の加速は不要であるため
     current_speedをそのまま返す（＝直ちに惰行へ移行すべきことを意味する）。
@@ -105,14 +160,14 @@ def calculate_required_speed(current_speed: float, dist_to_next_station: float, 
 
     # 現在速度のまま追加加速せず惰行→ブレーキに移行した場合の到達時間
     t_now, d_now = simulate_trip_time(current_speed, current_speed, dist_to_next_station, current_gradient)
-    if d_now >= dist_to_next_station - 1.0 and t_now <= time_to_next_station:
+    if d_now >= dist_to_next_station - ARRIVAL_TOL_M and t_now <= time_to_next_station:
         return current_speed
 
     lo, hi = current_speed, speed_limit
     for _ in range(24):
         mid = (lo + hi) / 2.0
         t_sim, d_sim = simulate_trip_time(current_speed, mid, dist_to_next_station, current_gradient)
-        if d_sim < dist_to_next_station - 1.0:
+        if d_sim < dist_to_next_station - ARRIVAL_TOL_M:
             # 駅に到達しきれない＝所要時間を過大評価させ、より高い速度を探索させる
             t_sim = SIM_MAX_TIME
         if t_sim > time_to_next_station:
