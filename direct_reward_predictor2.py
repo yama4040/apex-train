@@ -5,18 +5,34 @@ import os
 import re
 
 class DirectRewardPredictor:
-    def __init__(self, model_path='direct_reward_model2.h5', scaler_path='direct_reward_scaler2.pkl'):
+    def __init__(self, model_path='direct_reward_model2.h5', scaler_path='direct_reward_scaler2.pkl',
+                 gate_path='direct_reward_gate2.h5'):
         if os.path.exists(model_path) and os.path.exists(scaler_path):
             self.model = tf.keras.models.load_model(model_path, compile=False)
             self.scaler = joblib.load(scaler_path)
             self.is_loaded = True
-            
+
             # ▼▼▼ 【修正】入力次元数を 34 から 43 に完全に同期 ▼▼▼
             @tf.function(input_signature=[tf.TensorSpec(shape=[1, 43], dtype=tf.float32)])
             def predict_fn(x):
                 return self.model(x, training=False)
             self.predict_fn = predict_fn
-            
+
+            # ▼▼▼ 【改修】2段階化（ハードルモデル）のゲート分類器 ▼▼▼
+            # 「reward=0.0か否か」を判定する分類器。回帰器単体では0.0の山との補間で
+            # 本来0.0の状況に0.1〜0.3を漏らしてしまうため、0.0判定を分離する。
+            # ゲートファイルが無い場合は従来どおり回帰器のみで動作する（後方互換）。
+            self.gate_model = None
+            if os.path.exists(gate_path):
+                self.gate_model = tf.keras.models.load_model(gate_path, compile=False)
+
+                @tf.function(input_signature=[tf.TensorSpec(shape=[1, 43], dtype=tf.float32)])
+                def predict_gate_fn(x):
+                    return self.gate_model(x, training=False)
+                self.predict_gate_fn = predict_gate_fn
+            else:
+                print(f"[Warning] {gate_path} が見つかりません。ゲートなし（回帰器のみ）で動作します。")
+
         else:
             print(f"[Warning] {model_path} または {scaler_path} が見つかりません。デフォルトの0.0を使用します。")
             self.is_loaded = False
@@ -144,9 +160,19 @@ class DirectRewardPredictor:
             X_raw = self._preprocess_state(state_info)
             # 読み込まれている StandardScaler で正規化
             X_scaled = self.scaler.transform(X_raw)
-            # 高速化された Tensor 推論関数へ入力
-            preds = self.predict_fn(tf.convert_to_tensor(X_scaled, dtype=tf.float32))
-            
+            x_tensor = tf.convert_to_tensor(X_scaled, dtype=tf.float32)
+
+            # ▼▼▼ 【改修】2段階推論: ゲートが「0.0」と判定したら即0.0を返す ▼▼▼
+            if self.gate_model is not None:
+                zero_prob = float(self.predict_gate_fn(x_tensor).numpy()[0][0])
+                if zero_prob >= 0.5:
+                    return 0.0
+                # 非0.0と判定された場合、回帰器は0.1〜1.0の範囲で学習済みのためクリップする
+                reg_value = float(self.predict_fn(x_tensor).numpy()[0][0])
+                return round(min(max(reg_value, 0.1), 1.0), 1)
+
+            # ゲートなし（後方互換）: 従来どおり回帰器のみで推論
+            preds = self.predict_fn(x_tensor)
             # ▼▼▼ 修正: 従来のLLMと同じく小数点第1位に丸める ▼▼▼
             rounded_reward = round(float(preds.numpy()[0][0]), 1)
             return rounded_reward

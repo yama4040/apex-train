@@ -405,19 +405,21 @@ class Tester:
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
             writer = csv.writer(f)
             
-            # ▼▼▼【修正】実際のデータ構成（合計32列）に合わせた正しいヘッダ ▼▼▼
+            # ▼▼▼【修正】実際のデータ構成（合計38列）に合わせた正しいヘッダ ▼▼▼
             header = [
                 # 1. 生の観測値 (raw_state: 8次元)
-                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time", 
+                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time",
                 "raw_pre_act", "raw_stat_dist_2", "raw_fw_dist", "raw_cbtc_signal",
-                
-                # 2. ネットワーク入力値 (normalized_state: 19次元)
-                "norm_speed", "norm_stat_dist_wide", "norm_stat_dist_zoom", "norm_rem_time", "norm_hold_time", 
+
+                # 2. ネットワーク入力値 (normalized_state: 25次元、environment2.pyのnormalized_stateと同順)
+                "norm_speed", "norm_stat_dist_wide", "norm_stat_dist_zoom", "norm_rem_time", "norm_hold_time",
                 "norm_pre_act_c", "norm_pre_act_a", "norm_pre_act_d", "norm_fw_dist",
                 "norm_cbtc_signal", "norm_speed_limit", "norm_req_stop_dist", "norm_margin_stop_dist",
-                "phase_accel", "phase_cruise", "phase_limit", "phase_decel", "phase_stop", 
+                "phase_accel", "phase_cruise", "phase_limit", "phase_decel", "phase_stop",
                 "norm_fw_speed",
-                
+                "norm_gradient", "norm_next_grade_dist", "norm_next_grade_val",
+                "norm_next_limit_dist", "norm_next_limit_val", "norm_prev_notch_duration",
+
                 # 3. ネットワークの出力と報酬情報 (5次元)
                 "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward"
             ]

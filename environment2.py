@@ -250,7 +250,10 @@ class Environment:
         # 【制約】報酬はLLMを蒸留したNNの出力のみとする（時間ペナルティや終端ボーナス等の
         # 環境側の報酬加算は禁止）。ちんたら運転などの問題行動への対処は、
         # LLM評価プロンプトのルール（ちんたら運転=0.0）と下記のエピソード終了条件で行う。
-        reward = llm_reward
+        # 【重要】NN出力は「1秒あたりの評価値」とみなし、ステップ幅でスケールする。
+        # 駅手前100mではtime_stepが0.1秒に短縮されるため、スケールしないと実時間あたりの
+        # 報酬密度が10倍になり、「駅手前に留まり続けて報酬を稼ぐ」搾取行動が最適になってしまう。
+        reward = llm_reward * (time_step / self.__time_step)
 
         # --- 4. エピソード終了条件 ---
         goal_reached = False
@@ -279,27 +282,37 @@ class Environment:
             failed = True
 
         # ⑤ 【重要】手前での停止（ショートオーバーラン）
-        # 駅に届いていない（-10m未満）のに速度が0になってしまった場合
-        if self.speed <= 0.0 and self.position < self.arrival_station["position"] - 0.01:
+        # 駅に届いていない（-10m未満）のに実質的に停止してしまった場合。
+        # 判定を「速度0」から「0.5km/h以下」に拡大：速度を0.005km/h等に保つクリープ走行で
+        # この判定を回避し、駅手前でホバリングして報酬を稼ぐ搾取行動が観測されたため。
+        # 正常なブレーキ停車では速度が0.5km/hを下回るのは停止位置の直前（数cm手前）であり、
+        # 駅の10m以上手前でこの速度域に入ること自体が停止失敗を意味する。
+        if self.speed <= 0.5 and self.position < self.arrival_station["position"] - 0.01:
             # ただし、先行列車がいて、その手前で止まった場合は正しい「信号待ち」なので除外
             if self.fowerd_train_position is None or self.position < self.fowerd_train_position - 0.1:
                 done = True  # 即座にエピソードを打ち切る
                 failed = True
 
         # ⑥ 【追加】停滞（ちんたら運転）検出
-        # 極低速で走り続ければ「速度0」の判定（⑤）を回避してエピソードを引き延ばせて
+        # 極低速で走り続ければ「実質停止」の判定（⑤）を回避してエピソードを引き延ばせて
         # しまうため（実測では平均2.4km/hの匍匐走行が観測された）、進捗ベースで打ち切る。
-        if self.t - self._stall_check_t >= 30.0:
+        # 駅手前400m以内（減速フェーズ）ではtime_step短縮による報酬稼ぎの温床になるため、
+        # 判定窓を10秒に短縮し、より早く停滞を検出する。
+        near_station = self.station_remaining_distance <= 0.4
+        stall_window = 10.0 if near_station else 30.0
+        if self.t - self._stall_check_t >= stall_window:
             progress = self.position - self._stall_check_pos
+            # 10秒窓: 5m未満（平均1.8km/h未満）／ 30秒窓: 25m未満（平均3km/h未満）
+            min_progress = 0.005 if near_station else 0.025
             if not goal_reached:
                 if self.fowerd_train_position is None:
-                    # 先行列車がいない場合: 30秒で25m未満（平均3km/h未満）の前進はちんたら運転
-                    if progress < 0.025:
+                    # 先行列車がいない場合: 規定の前進がなければちんたら運転として打ち切る
+                    if progress < min_progress:
                         done = True
                         failed = True
                 elif self.position < self.fowerd_train_position - 0.1 and progress < 0.005:
-                    # 先行列車がいる場合: 信号待ちの可能性があるため、ほぼ完全な停滞（30秒で
-                    # 5m未満）のみを対象とし、先行列車の直後（100m以内）での待機は除外する
+                    # 先行列車がいる場合: 信号待ちの可能性があるため、ほぼ完全な停滞
+                    # （窓内で5m未満）のみを対象とし、先行列車の直後（100m以内）での待機は除外する
                     done = True
                     failed = True
             self._stall_check_t = self.t
@@ -329,6 +342,12 @@ class Environment:
 
     # --- LLM推論用の状態テキスト生成ヘルパー群 ---
     def _get_current_phase_str(self):
+        # 駅停車完了（駅の10m以内かつ実質停止）。apex2.pyのテスター側のLLM評価用CSV生成と同一条件。
+        # この分岐がないと、停車した瞬間の終端報酬が「減速フェーズ」として評価されてしまい、
+        # プロンプトの「停車完了フェーズ＝停止位置誤差の段階評価」ルールがRL中に一度も発動しない。
+        # また、DQN観測ベクトルのphase_5（停車完了）も常に0の死んだ入力になってしまう。
+        if self.station_remaining_distance * 1000.0 <= 10.0 and self.speed <= 0.1:
+            return "駅停車完了（速度0km/h）"
         # 出発遅延がある場合もエピソード開始からの経過時間で判定する
         if self.t - getattr(self, 'episode_start_t', 0.0) <= 20.0:
             return "駅出発直後の加速フェーズ（20秒以内）"

@@ -224,12 +224,50 @@ def build_model(input_dim):
     model.compile(optimizer=optimizer, loss=Huber(delta=1.0), metrics=['mae', custom_accuracy])
     return model
 
+def build_gate_model(input_dim):
+    """
+    2段階化（ハードルモデル）の1段目：「reward=0.0か否か」を判定する二値分類器。
+    回帰NN単体では0.0の山（多数派）と中間値の間で滑らかに補間してしまい、
+    本来0.0の状況に0.1〜0.3を漏らす（DQNの搾取の燃料になる）ため、
+    ルール的な0.0判定はシャープな境界を引ける分類器に分離する。
+    出力は「reward=0.0である確率」（sigmoid）。
+    """
+    l2_reg = l2(1e-4)
+    model = Sequential([
+        Input(shape=(input_dim,)),
+
+        Dense(128, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
+        Dropout(0.3),
+
+        Dense(64, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
+        Dropout(0.2),
+
+        Dense(32, kernel_regularizer=l2_reg),
+        BatchNormalization(),
+        Activation('relu'),
+        Dropout(0.1),
+
+        Dense(1, activation='sigmoid')
+    ])
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1.0)
+    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+    return model
+
 def compute_bin_sample_weights(y):
     """
-    0.1刻みのラベル区間ごとの出現頻度の逆数を重みとして算出する。
-    件数の少ない区間（例: 1.0付近）が損失関数上で過小評価されるのを防ぐ。
-    1.0帯の精度を優先するため、緩和(sqrt)や上限クリップは行わず
-    単純な逆頻度重み付けとする（0.9帯等が多少過小評価される副作用は許容）。
+    0.1刻みのラベル区間ごとの出現頻度の逆数（sqrt緩和）を重みとして算出する。
+    件数の少ない区間（例: 0.7付近）が損失関数上で過小評価されるのを防ぐ。
+
+    【改修】旧実装の単純な逆頻度重みでは、多数派の0.0ビン（3,441件）と少数派の
+    0.7ビン（22件）の重み比が約156倍にもなり、0.0ラベルのサンプルの誤差がほぼ
+    罰されなくなっていた。その結果「本来0.0を出すべき状況で0.1〜0.3を出す」較正崩れが
+    生じ、DQNがその漏れ報酬を搾取していた（駅手前ホバリング）。
+    1/sqrt(件数) に緩和することで重み比を10倍強程度に抑え、少数ビンへの配慮と
+    多数派の予測精度を両立させる。
     重みの平均が1.0になるよう正規化し、学習率など他のハイパーパラメータへの
     影響を最小限に抑える。
     """
@@ -237,15 +275,15 @@ def compute_bin_sample_weights(y):
     bin_counts = np.bincount(bin_idx, minlength=11).astype(np.float32)
     bin_counts[bin_counts == 0] = 1.0  # ゼロ割り防止
 
-    inv_freq = 1.0 / bin_counts
+    inv_freq = 1.0 / np.sqrt(bin_counts)
     sample_weight = inv_freq[bin_idx]
     sample_weight = sample_weight / sample_weight.mean()
     return sample_weight.astype(np.float32), bin_idx
 
 
-def plot_learning_curve(history):
+def plot_learning_curve(history, out_path='learning_curve_direct.png'):
     plt.figure(figsize=(12, 5))
-    
+
     plt.subplot(1, 2, 1)
     plt.plot(history.history['loss'], label='Train Loss (Huber)')
     plt.plot(history.history['val_loss'], label='Validation Loss (Huber)')
@@ -253,7 +291,7 @@ def plot_learning_curve(history):
     plt.ylabel('Loss')
     plt.xlabel('Epoch')
     plt.legend(loc='upper right')
-    
+
     plt.subplot(1, 2, 2)
     plt.plot(history.history['mae'], label='Train MAE')
     plt.plot(history.history['val_mae'], label='Validation MAE')
@@ -261,14 +299,20 @@ def plot_learning_curve(history):
     plt.ylabel('MAE')
     plt.xlabel('Epoch')
     plt.legend(loc='upper right')
-    
-    plt.tight_layout()
-    plt.savefig('learning_curve_direct.png') 
-    plt.show() 
 
-def main():
-    csv_dir = 'train_reward_csv_direct'
-    
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.show()
+
+# 「reward=0.0」とみなすラベルの閾値（浮動小数の丸め誤差対策）
+ZERO_THRESHOLD = 0.05
+
+def main(csv_dir='train_reward_csv_direct',
+         model_path='direct_reward_model2.h5',
+         gate_path='direct_reward_gate2.h5',
+         scaler_path='direct_reward_scaler2.pkl',
+         plot_path='learning_curve_direct.png',
+         epochs=500):
     X, y, feature_cols = load_and_preprocess_data(csv_dir)
     print(f"入力特徴量次元数: {X.shape[1]}")
 
@@ -280,35 +324,89 @@ def main():
     )
     print(f"学習データ数: {X_train.shape[0]}, テストデータ数: {X_test.shape[0]}")
 
-    # ▼▼▼ 【修正】少数派ラベル(1.0付近など)の損失への寄与を高める重み ▼▼▼
-    train_sample_weight, _ = compute_bin_sample_weights(y_train)
-
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
-
-    model = build_model(X_train_scaled.shape[1])
 
     early_stop = EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
     # ▼▼▼ 【修正】val_lossが停滞したら学習率を下げ、局所解での発散/停滞を防ぐ ▼▼▼
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=10, min_lr=1e-6, verbose=1)
 
-    print("学習を開始します...")
+    # =====================================================================
+    # ▼▼▼ 【改修】2段階化（ハードルモデル） ▼▼▼
+    # 1段目（ゲート分類器）: 全データで「reward=0.0か否か」を学習
+    # 2段目（回帰器）      : 非0.0のデータのみで「0.0でないなら何点か」を学習
+    # 推論時はゲートが0.0と判定したら0.0、そうでなければ回帰器の出力を採用する
+    # （direct_reward_predictor2.py側の合成ロジックと対応）。
+    # =====================================================================
+
+    # --- 1段目: ゲート分類器 ---
+    y_train_zero = (y_train.flatten() <= ZERO_THRESHOLD).astype(np.float32).reshape(-1, 1)
+    y_test_zero = (y_test.flatten() <= ZERO_THRESHOLD).astype(np.float32).reshape(-1, 1)
+    print(f"\n[ゲート分類器] 0.0ラベル: {int(y_train_zero.sum())}件 / 非0.0: {int(len(y_train_zero) - y_train_zero.sum())}件")
+
+    gate_model = build_gate_model(X_train_scaled.shape[1])
+    gate_early_stop = EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
+    gate_reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=10, min_lr=1e-6, verbose=1)
+    print("ゲート分類器の学習を開始します...")
+    gate_model.fit(
+        X_train_scaled, y_train_zero,
+        validation_data=(X_test_scaled, y_test_zero),
+        epochs=epochs,
+        batch_size=64,
+        callbacks=[gate_early_stop, gate_reduce_lr],
+        verbose=1
+    )
+
+    # --- 2段目: 非0.0のみの回帰器 ---
+    nonzero_train = y_train.flatten() > ZERO_THRESHOLD
+    nonzero_test = y_test.flatten() > ZERO_THRESHOLD
+    X_train_nz = X_train_scaled[nonzero_train]
+    y_train_nz = y_train[nonzero_train]
+    X_test_nz = X_test_scaled[nonzero_test]
+    y_test_nz = y_test[nonzero_test]
+    print(f"\n[回帰器] 学習データ数（非0.0のみ）: {X_train_nz.shape[0]}, テストデータ数: {X_test_nz.shape[0]}")
+
+    # ▼▼▼ 少数派ラベル(0.7付近など)の損失への寄与を高める重み（sqrt緩和済み） ▼▼▼
+    train_sample_weight_nz, _ = compute_bin_sample_weights(y_train_nz)
+
+    model = build_model(X_train_nz.shape[1])
+    print("回帰器の学習を開始します...")
     history = model.fit(
-        X_train_scaled, y_train,
-        sample_weight=train_sample_weight,
-        validation_data=(X_test_scaled, y_test),
-        epochs=500,
+        X_train_nz, y_train_nz,
+        sample_weight=train_sample_weight_nz,
+        validation_data=(X_test_nz, y_test_nz),
+        epochs=epochs,
         batch_size=64,
         callbacks=[early_stop, reduce_lr],
         verbose=1
     )
-    
-    plot_learning_curve(history)
-    
-    model.save('direct_reward_model2.h5')
-    joblib.dump(scaler, 'direct_reward_scaler2.pkl')
-    print("モデル('direct_reward_model2.h5')とスケーラー('direct_reward_scaler2.pkl')を保存しました。")
+
+    plot_learning_curve(history, plot_path)
+
+    # =====================================================================
+    # ▼▼▼ 合成モデルとしての評価（推論時と同じ合成ロジックで検証） ▼▼▼
+    # =====================================================================
+    gate_prob = gate_model.predict(X_test_scaled, verbose=0).flatten()
+    reg_pred = model.predict(X_test_scaled, verbose=0).flatten()
+    combined = np.where(gate_prob >= 0.5, 0.0, np.clip(reg_pred, 0.1, 1.0))
+    y_test_flat = y_test.flatten()
+
+    mae = np.abs(combined - y_test_flat).mean()
+    print(f"\n[合成モデル評価] テストMAE: {mae:.4f}")
+    zero_mask = y_test_flat <= ZERO_THRESHOLD
+    if zero_mask.any():
+        leak = (combined[zero_mask] > 0.25).mean()
+        print(f"[合成モデル評価] ラベル0.0のうち予測0.25超（報酬リーク）: {leak:.1%} "
+              f"(平均予測 {combined[zero_mask].mean():.3f})")
+    if (~zero_mask).any():
+        mae_nz = np.abs(combined[~zero_mask] - y_test_flat[~zero_mask]).mean()
+        print(f"[合成モデル評価] 非0.0ラベルのMAE: {mae_nz:.4f}")
+
+    model.save(model_path)
+    gate_model.save(gate_path)
+    joblib.dump(scaler, scaler_path)
+    print(f"回帰器('{model_path}')・ゲート分類器('{gate_path}')・スケーラー('{scaler_path}')を保存しました。")
 
 if __name__ == "__main__":
     main()
