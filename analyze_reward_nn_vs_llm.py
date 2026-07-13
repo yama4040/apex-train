@@ -50,6 +50,11 @@ OLD_REGRESSION_SCALER_PATH = "direct_reward_scaler.pkl"
 
 NEW_REGRESSION_MODEL_PATH = "direct_reward_model2.h5"
 NEW_REGRESSION_SCALER_PATH = "direct_reward_scaler2.pkl"
+# 2段階化（ハードルモデル）のゲート分類器。direct_reward_predictor2.py と同じ合成
+# （ゲートP(0.0)>=0.5なら0.0、それ以外は回帰値を[0.1,1.0]にクリップ）で評価する。
+# ゲートなしで回帰器単体を評価すると、非0.0のみで学習した回帰器が0.0ラベル行に
+# 高値を出すのは設計通りの挙動のため、誤った「大惨事」に見えてしまう。
+NEW_GATE_MODEL_PATH = "direct_reward_gate2.h5"
 
 CLASSIFICATION_MODEL_PATH = "classification_reward_model.h5"
 CLASSIFICATION_SCALER_PATH = "classification_reward_scaler.pkl"
@@ -137,8 +142,14 @@ def load_raw_data(csv_dir):
     if 'required_speed' in df.columns:
         df['speed_margin_to_required'] = df['current_speed'] - df['required_speed']
 
+    # 旧回帰NN・分類NN向け: 学習時と同じ閾値5秒のノコギリスコア
     hunting_condition = (df['holding_time'] < 5.0) & (df['prev_notch_duration'] < 5.0) & (df['current_notch'] != df['prev_notch'])
     df['hunting_score'] = np.where(hunting_condition, np.maximum(0.0, 5.0 - df['holding_time']) / 5.0, 0.0).astype(np.float32)
+
+    # 新回帰NN（train_reward_network2.py）向け: 学習時と同じ閾値7秒のノコギリスコア
+    # （LLM評価プロンプトのノコギリ判定と同じ7秒。5秒版を入力すると学習時と特徴量がズレる）
+    hunting_condition_7 = (df['holding_time'] < 7.0) & (df['prev_notch_duration'] < 7.0) & (df['current_notch'] != df['prev_notch'])
+    df['hunting_score_7'] = np.where(hunting_condition_7, np.maximum(0.0, 7.0 - df['holding_time']) / 7.0, 0.0).astype(np.float32)
 
     # 誤差分析（フェーズ・特徴量別集計）用に、ダミー変数化で失われる前のラベルを別列として保持しておく
     # ※ '_dummy_cols' が 'phase_' / 'current_notch_' 始まりの列をNN入力として拾うため、
@@ -146,7 +157,7 @@ def load_raw_data(csv_dir):
     df['group_phase'] = df['phase'].astype(str)
     df['group_notch'] = df['current_notch'].astype(str)
     df['group_delay'] = np.where(df['delay'] <= 0.0, "遅延なし", np.where(df['delay'] <= 10.0, "遅延10秒以内", "遅延10秒超"))
-    df['group_hunting'] = np.where(df['hunting_score'] > 0.0, "ノコギリ疑いあり", "なし")
+    df['group_hunting'] = np.where(df['hunting_score_7'] > 0.0, "ノコギリ疑いあり", "なし")
 
     phase_categories = [
         "駅出発直後の加速フェーズ（20秒以内）",
@@ -198,11 +209,12 @@ CLASSIFICATION_FEATURE_COLS = [
     'b_exist', 'b_distance', 'b_speed'
 ]
 
+# 新回帰NN用。'hunting_score_7'（閾値7秒）は学習時の'hunting_score'と同じ位置・同じ意味の特徴量
 REGRESSION_FEATURE_COLS = [
     'hold_coast', 'hold_accel', 'hold_decel',
     'prev_notch_duration',
     'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient',
-    'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed', 'speed_margin_to_required', 'hunting_score',
+    'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed', 'speed_margin_to_required', 'hunting_score_7',
     'f_relative_speed', 'b_relative_speed',
     'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
     'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
@@ -275,6 +287,21 @@ def predict_regression(model, scaler, X):
     clipped = np.clip(raw, 0.0, 1.0)
     rounded = np.round(clipped * 10.0) / 10.0
     return raw, rounded
+
+
+def predict_hurdle(reg_model, gate_model, scaler, X):
+    """
+    2段階（ハードル）モデルの合成出力。direct_reward_predictor2.py の推論と完全に一致させる:
+        ゲートP(0.0) >= 0.5 → 0.0
+        それ以外          → 回帰値を [0.1, 1.0] にクリップ
+    戻り値は (合成後の連続値, 0.1刻みに丸めた値, ゲート確率)
+    """
+    X_scaled = scaler.transform(X)
+    gate_prob = gate_model.predict(X_scaled, verbose=0).flatten()
+    reg_raw = reg_model.predict(X_scaled, verbose=0).flatten()
+    composed = np.where(gate_prob >= 0.5, 0.0, np.clip(reg_raw, 0.1, 1.0))
+    rounded = np.round(composed * 10.0) / 10.0
+    return composed, rounded, gate_prob
 
 
 def predict_classification(model, scaler, X):
@@ -526,19 +553,19 @@ def export_worst_mismatches(analysis_df, label, save_path, top_n=50):
 RULE_CHECK_EXPORT_COLS = [
     "time", "train_id", "group_phase", "group_notch", "current_speed", "signal_speed", "speed_limit",
     "dist_to_next_station", "req_stop_dist", "delta_stop", "delay", "f_exist", "f_distance",
-    "rule_bucket", "rule_reason", "llm_bucket", "nn_bucket", "llm_reward", "nn_output", "reason"
+    "rule_expected", "rule_reason", "llm_reward", "nn_output", "reason"
 ]
 
 
 def compute_rule_based_expected(df):
     """
-    次駅減速フェーズ／駅停車完了フェーズについて、evaluate_csv_with_llm.pyのプロンプトに
-    明記された閾値ルール（delta_stop = dist_to_next_station - req_stop_dist、停止誤差など）から、
-    LLMを介さず「本来どの評価帯になるべきか」を機械的に再計算する。
+    次駅減速フェーズ／駅停車完了フェーズについて、evaluate_csv_with_llm.pyのプロンプト
+    （2026-07-13改訂版: 即0.0は安全違反のみ・運転品質は段階減点）に明記された閾値ルールから、
+    LLMを介さず「本来rewardがどの範囲になるべきか」を機械的に再計算する。
 
-    戻り値の rule_bucket は 'zero'（大幅減点=0.0が妥当）/ 'mid'（部分減点が妥当）/
-    'high'（高評価が妥当）/ None（このルールでは判定できない＝他の評価基準に委ねる）のいずれか。
+    戻り値は rule_min / rule_max（期待されるrewardの範囲。判定不能な行はNaN）と rule_reason。
     ノコギリ運転など「合理的理由の有無」を要する主観的なルールは対象外（機械的に判定不能なため）。
+    巡航フェーズのちんたら運転ルールも「required_speedを大きく下回る」の定義が主観的なため対象外。
     """
     df = df.copy()
     delta_stop = df['dist_to_next_station'] - df['req_stop_dist']
@@ -546,97 +573,112 @@ def compute_rule_based_expected(df):
 
     is_braking = df['group_notch'] == 'ブレーキ（減速）中'
     is_accel = df['group_notch'] == '力行（加速）中'
-    is_coast = df['group_notch'] == '惰行中'
     has_forward = df['f_exist'] > 0.5
     forward_close = has_forward & (df['f_distance'] < 600.0)
 
-    bucket = pd.Series([None] * len(df), index=df.index, dtype=object)
+    rule_min = pd.Series(np.nan, index=df.index, dtype=float)
+    rule_max = pd.Series(np.nan, index=df.index, dtype=float)
     reason = pd.Series([""] * len(df), index=df.index, dtype=object)
 
     decel_mask = df['group_phase'] == '次駅への減速フェーズ（駅手前400m以内）'
     stop_mask = df['group_phase'] == '駅停車完了（速度0km/h）'
 
-    def set_bucket(mask, value, why):
-        bucket[mask] = value
+    def set_range(mask, lo, hi, why):
+        rule_min[mask] = lo
+        rule_max[mask] = hi
         reason[mask] = why
 
-    # ---- 駅停車完了フェーズ ----
+    # ---- 駅停車完了フェーズ（改訂プロンプト: 誤差に応じた5段階） ----
     stop_dist_abs = df['dist_to_next_station'].abs()
-    set_bucket(stop_mask & (stop_dist_abs <= 1.0), 'high', '停止誤差1m以内')
-    set_bucket(stop_mask & (stop_dist_abs > 1.0) & (stop_dist_abs <= 10.0), 'mid', '停止誤差1〜10mの範囲（段階的減点）')
-    set_bucket(stop_mask & (stop_dist_abs > 10.0) & (df['signal_speed'] > 0.0), 'zero', '停止誤差10m超（signal_speed>0）')
-    set_bucket(stop_mask & (stop_dist_abs > 10.0) & (df['signal_speed'] <= 0.0), 'high', '停止誤差10m超だがsignal_speed=0（先行列車衝突回避）')
+    set_range(stop_mask & (stop_dist_abs <= 1.0), 1.0, 1.0, '停止誤差1m以内 → 1.0')
+    set_range(stop_mask & (stop_dist_abs > 1.0) & (stop_dist_abs <= 3.0), 0.7, 0.7, '停止誤差1〜3m → 0.7')
+    set_range(stop_mask & (stop_dist_abs > 3.0) & (stop_dist_abs <= 5.0), 0.4, 0.4, '停止誤差3〜5m → 0.4')
+    set_range(stop_mask & (stop_dist_abs > 5.0) & (stop_dist_abs <= 10.0), 0.2, 0.2, '停止誤差5〜10m → 0.2')
+    set_range(stop_mask & (stop_dist_abs > 10.0), 0.0, 0.0, '停止誤差10m超 → 0.0')
+    # CBTC信号現示0km/hなら停止誤差に関わらず1.0（先行列車衝突回避）。上の設定を上書きする
+    set_range(stop_mask & (df['signal_speed'] <= 0.0), 1.0, 1.0, 'signal_speed=0（先行列車衝突回避）→ 1.0')
 
     # ---- 次駅減速フェーズ：先行列車が近くにいる場合（600m未満）を優先評価 ----
-    set_bucket(
+    set_range(
         decel_mask & forward_close & ((df['current_speed'] - df['signal_speed']).abs() <= 2.0) & is_braking,
-        'high', '先行列車接近中、信号速度に整合してブレーキ中'
+        0.8, 1.0, '先行列車接近中、信号速度に整合してブレーキ中 → 高評価'
     )
-    set_bucket(
-        decel_mask & forward_close & (df['current_speed'] > df['signal_speed']) & ~is_braking,
-        'zero', '先行列車接近中、信号超過かつブレーキなし（信号無視）'
+    set_range(
+        decel_mask & forward_close & (df['current_speed'] > df['signal_speed'] + 2.0) & ~is_braking,
+        0.0, 0.0, '先行列車接近中、信号超過かつブレーキなし（信号無視）→ 0.0'
     )
-    set_bucket(
+    set_range(
         decel_mask & forward_close & (delta_stop > 0) & is_accel & (df['current_speed'] <= df['signal_speed'] + 2.0),
-        'high', '先行列車解放に伴う加速（適切）'
+        0.8, 1.0, '先行列車解放に伴う加速（適切）→ 高評価'
     )
 
-    # ---- 次駅減速フェーズ：先行列車がいない／十分離れている場合 ----
+    # ---- 次駅減速フェーズ：先行列車がいない／十分離れている場合（改訂プロンプトの段階評価） ----
     far_or_none = decel_mask & ~forward_close
-    set_bucket(far_or_none & is_braking & (delta_stop.abs() <= 2.0), 'high', 'ブレーキ中、|delta_stop|<=2m')
-    set_bucket(far_or_none & is_braking & (delta_stop.abs() > 2.0) & (delta_stop.abs() <= 5.0), 'mid', 'ブレーキ中、2m<|delta_stop|<=5m')
-    set_bucket(far_or_none & is_braking & (delta_stop.abs() > 5.0), 'zero', 'ブレーキ中、|delta_stop|>5m')
+    # ブレーキ中
+    set_range(far_or_none & is_braking & (delta_stop.abs() <= 2.0), 0.8, 1.0, 'ブレーキ中、|delta_stop|<=2m → 0.8〜1.0')
+    set_range(far_or_none & is_braking & (delta_stop.abs() > 2.0) & (delta_stop.abs() <= 5.0), 0.5, 0.7, 'ブレーキ中、2m<|delta_stop|<=5m → 0.5〜0.7')
+    set_range(far_or_none & is_braking & (delta_stop > 5.0) & (delta_stop <= 15.0), 0.2, 0.4, 'ブレーキ中、5m<delta_stop<=15m（早すぎ）→ 0.2〜0.4')
+    set_range(far_or_none & is_braking & (delta_stop > 15.0), 0.1, 0.1, 'ブレーキ中、delta_stop>15m（大幅手前停止確実）→ 0.1')
+    set_range(far_or_none & is_braking & (delta_stop < -5.0), 0.0, 0.0, 'ブレーキ中、delta_stop<-5m（オーバーラン確実）→ 0.0')
 
-    set_bucket(far_or_none & ~is_braking & (delta_stop >= 0.0), 'high', 'ブレーキなし、delta_stop>=0m')
-    set_bucket(far_or_none & ~is_braking & (delta_stop < 0.0) & (delta_stop >= -2.0), 'mid', 'ブレーキなし、-2m<=delta_stop<0m')
-    set_bucket(far_or_none & ~is_braking & (delta_stop < -2.0), 'zero', 'ブレーキなし、delta_stop<-2m（オーバーランリスク）')
-    # 例外: 先行列車なし・遅延ありで低速惰行（遅延助長）は上の「delta_stop>=0m→high」を上書きする
-    set_bucket(
-        far_or_none & is_coast & (df['delay'] > 0.0) & (df['current_speed'] < 20.0) & (delta_stop >= 0.0),
-        'zero', '先行列車なし・遅延ありで低速惰行（遅延助長）'
+    # ブレーキなし
+    set_range(far_or_none & ~is_braking & (delta_stop >= 0.0), 0.8, 1.0, 'ブレーキなし、delta_stop>=0m → 高評価')
+    set_range(far_or_none & ~is_braking & (delta_stop < 0.0) & (delta_stop > -2.0), 0.4, 0.7, 'ブレーキなし、-2m<delta_stop<0m → やや減点')
+    set_range(far_or_none & ~is_braking & (delta_stop <= -2.0), 0.0, 0.0, 'ブレーキなし、delta_stop<=-2m（オーバーランリスク）→ 0.0')
+    # 例外: 先行列車なしで低速（<25km/h）の惰行・力行は「ちんたら運転」（改訂で0.0→0.1〜0.3の段階減点に変更）
+    # 上の「delta_stop>=0m→高評価」を上書きする
+    set_range(
+        far_or_none & ~is_braking & (df['current_speed'] < 25.0) & (delta_stop >= 0.0),
+        0.1, 0.3, '先行列車なし・低速（<25km/h）の惰行/力行（ちんたら運転）→ 0.1〜0.3'
     )
 
-    df['rule_bucket'] = bucket
+    df['rule_min'] = rule_min
+    df['rule_max'] = rule_max
     df['rule_reason'] = reason
+    df['rule_expected'] = np.where(
+        rule_min.notna(),
+        np.where(rule_min == rule_max,
+                 rule_min.map(lambda v: f"{v:.1f}"),
+                 rule_min.map(lambda v: f"{v:.1f}") + "〜" + rule_max.map(lambda v: f"{v:.1f}")),
+        ""
+    )
     return df
 
 
-def _value_to_bucket(values):
-    """reward値(0.0〜1.0)を 'zero'（<=0.05）/ 'high'（>=0.7）/ 'mid'（それ以外）の3帯に分類する"""
-    values = np.asarray(values, dtype=np.float32)
-    return np.select([values <= 0.05, values >= 0.7], ['zero', 'high'], default='mid')
+# レンジ照合の許容誤差（0.1刻み出力の丸めゆらぎを許容する）
+RULE_MATCH_TOLERANCE = 0.05
 
 
 def analyze_rule_based_decel_check(df_subset, llm_reward, nn_rounded, label, save_dir=OUTPUT_DIR):
     """
-    次駅減速フェーズ／駅停車完了フェーズについて、ルールベースの期待値とLLM/NNの出力を突き合わせる。
-    - ルールと不一致のLLMラベル → LLMがルールに反した判定（ハルシネーション）をしている疑い
-    - LLMはルールと一致しているのにNNだけ不一致 → NNがルールを学習しきれていない疑い
+    次駅減速フェーズ／駅停車完了フェーズについて、ルールベースの期待レンジとLLM/NNの出力を突き合わせる。
+    - レンジ外のLLMラベル → LLMがルールに反した判定（ハルシネーション）をしている疑い
+    - LLMはレンジ内なのにNNだけレンジ外 → NNがルールを学習しきれていない疑い
     """
     df_rule = compute_rule_based_expected(df_subset)
     df_rule['llm_reward'] = llm_reward
     df_rule['nn_output'] = nn_rounded
-    df_rule['llm_bucket'] = _value_to_bucket(llm_reward)
-    df_rule['nn_bucket'] = _value_to_bucket(nn_rounded)
 
-    target = df_rule[df_rule['rule_bucket'].notna()].copy()
+    target = df_rule[df_rule['rule_min'].notna()].copy()
     print(f"\n=== {label}: ルール判定可能な行数 = {len(target)} / {len(df_rule)}（次駅減速・駅停車完了フェーズのみ対象） ===")
 
     if len(target) == 0:
         print("[警告] ルール判定可能な行がないため、この分析はスキップします。")
         return
 
-    llm_match = target['llm_bucket'] == target['rule_bucket']
-    nn_match = target['nn_bucket'] == target['rule_bucket']
-    print(f"LLMラベルがルールと一致: {llm_match.mean() * 100:.1f}% ({llm_match.sum()}/{len(target)})")
-    print(f"NN出力がルールと一致:   {nn_match.mean() * 100:.1f}% ({nn_match.sum()}/{len(target)})")
+    lo = target['rule_min'] - RULE_MATCH_TOLERANCE
+    hi = target['rule_max'] + RULE_MATCH_TOLERANCE
+    llm_match = (target['llm_reward'] >= lo) & (target['llm_reward'] <= hi)
+    nn_match = (target['nn_output'] >= lo) & (target['nn_output'] <= hi)
+    print(f"LLMラベルがルールレンジ内: {llm_match.mean() * 100:.1f}% ({llm_match.sum()}/{len(target)})")
+    print(f"NN出力がルールレンジ内:   {nn_match.mean() * 100:.1f}% ({nn_match.sum()}/{len(target)})")
 
     cols = [c for c in RULE_CHECK_EXPORT_COLS if c in target.columns]
 
     llm_suspect = target[~llm_match]
     print(f"\n--- LLMがルールに反した判定をしている疑いのある行: {len(llm_suspect)}件 ---")
     if len(llm_suspect) > 0:
-        print(llm_suspect['rule_bucket'].value_counts().rename('ルール上の正解帯（実際はズレ）').to_string())
+        print(llm_suspect['rule_reason'].value_counts().rename('該当ルール（LLMがレンジ外）').to_string())
         path = os.path.join(save_dir, f"rule_check_llm_suspect_{label}.csv")
         llm_suspect[cols].to_csv(path, index=False, encoding='utf-8-sig')
         print(f"[保存] {path}")
@@ -644,7 +686,7 @@ def analyze_rule_based_decel_check(df_subset, llm_reward, nn_rounded, label, sav
     nn_suspect = target[llm_match & ~nn_match]
     print(f"\n--- LLMは正しいがNNがルールに反した出力をしている疑いのある行: {len(nn_suspect)}件 ---")
     if len(nn_suspect) > 0:
-        print(nn_suspect['rule_bucket'].value_counts().rename('ルール上の正解帯（NNがズレ）').to_string())
+        print(nn_suspect['rule_reason'].value_counts().rename('該当ルール（NNがレンジ外）').to_string())
         path = os.path.join(save_dir, f"rule_check_nn_suspect_{label}.csv")
         nn_suspect[cols].to_csv(path, index=False, encoding='utf-8-sig')
         print(f"[保存] {path}")
@@ -666,6 +708,14 @@ def main():
     new_reg_model, new_reg_scaler = load_model_and_scaler(NEW_REGRESSION_MODEL_PATH, NEW_REGRESSION_SCALER_PATH)
     cls_model, cls_scaler = load_model_and_scaler(CLASSIFICATION_MODEL_PATH, CLASSIFICATION_SCALER_PATH)
 
+    # ゲート分類器（2段階モデルの1段目）。存在すれば合成推論、なければ旧来の回帰単体推論にフォールバック
+    new_gate_model = None
+    if os.path.exists(NEW_GATE_MODEL_PATH):
+        new_gate_model = tf.keras.models.load_model(NEW_GATE_MODEL_PATH, compile=False)
+    else:
+        print(f"[警告] '{NEW_GATE_MODEL_PATH}' が見つかりません。新回帰NNはゲートなし（回帰器単体）で評価します。")
+        print("       ※2段階学習後のモデルを回帰器単体で評価すると0.0ラベル行に高値が出ますが、これは設計上の挙動です。")
+
     raw_old_reg, rounded_old_reg = (None, None)
     if old_reg_model is not None:
         print("旧回帰NN（train_reward_network.py）で推論中...")
@@ -673,8 +723,13 @@ def main():
 
     raw_new_reg, rounded_new_reg = (None, None)
     if new_reg_model is not None and X_new_reg is not None:
-        print("新回帰NN（train_reward_network2.py）で推論中...")
-        raw_new_reg, rounded_new_reg = predict_regression(new_reg_model, new_reg_scaler, X_new_reg)
+        if new_gate_model is not None:
+            print("新2段階NN（ゲート＋回帰、train_reward_network2.py）で推論中...")
+            raw_new_reg, rounded_new_reg, gate_prob = predict_hurdle(new_reg_model, new_gate_model, new_reg_scaler, X_new_reg)
+            print(f"  ゲートが0.0と判定した行: {int((gate_prob >= 0.5).sum())} / {len(gate_prob)}")
+        else:
+            print("新回帰NN（train_reward_network2.py、ゲートなし）で推論中...")
+            raw_new_reg, rounded_new_reg = predict_regression(new_reg_model, new_reg_scaler, X_new_reg)
 
     rounded_cls = None
     if cls_model is not None:
