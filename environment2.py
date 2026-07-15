@@ -253,7 +253,11 @@ class Environment:
         # 【重要】NN出力は「1秒あたりの評価値」とみなし、ステップ幅でスケールする。
         # 駅手前100mではtime_stepが0.1秒に短縮されるため、スケールしないと実時間あたりの
         # 報酬密度が10倍になり、「駅手前に留まり続けて報酬を稼ぐ」搾取行動が最適になってしまう。
-        reward = llm_reward * (time_step / self.__time_step)
+
+        # 通常評価（0.0～1.0）
+        #reward = llm_reward * (time_step / self.__time_step)
+        # ゼロ中心化後
+        reward = (llm_reward - 0.5) * (time_step / self.__time_step)
 
         # --- 4. エピソード終了条件 ---
         goal_reached = False

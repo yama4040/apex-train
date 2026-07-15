@@ -588,11 +588,11 @@ def compute_rule_based_expected(df):
         rule_max[mask] = hi
         reason[mask] = why
 
-    # ---- 駅停車完了フェーズ（改訂プロンプト: 誤差に応じた5段階） ----
+    # ---- 駅停車完了フェーズ（2026-07-15改訂プロンプト: 誤差に応じた5段階） ----
     stop_dist_abs = df['dist_to_next_station'].abs()
     set_range(stop_mask & (stop_dist_abs <= 1.0), 1.0, 1.0, '停止誤差1m以内 → 1.0')
-    set_range(stop_mask & (stop_dist_abs > 1.0) & (stop_dist_abs <= 3.0), 0.7, 0.7, '停止誤差1〜3m → 0.7')
-    set_range(stop_mask & (stop_dist_abs > 3.0) & (stop_dist_abs <= 5.0), 0.4, 0.4, '停止誤差3〜5m → 0.4')
+    set_range(stop_mask & (stop_dist_abs > 1.0) & (stop_dist_abs <= 3.0), 0.8, 0.8, '停止誤差1〜3m → 0.8')
+    set_range(stop_mask & (stop_dist_abs > 3.0) & (stop_dist_abs <= 5.0), 0.5, 0.5, '停止誤差3〜5m → 0.5')
     set_range(stop_mask & (stop_dist_abs > 5.0) & (stop_dist_abs <= 10.0), 0.2, 0.2, '停止誤差5〜10m → 0.2')
     set_range(stop_mask & (stop_dist_abs > 10.0), 0.0, 0.0, '停止誤差10m超 → 0.0')
     # CBTC信号現示0km/hなら停止誤差に関わらず1.0（先行列車衝突回避）。上の設定を上書きする
@@ -614,11 +614,11 @@ def compute_rule_based_expected(df):
 
     # ---- 次駅減速フェーズ：先行列車がいない／十分離れている場合（改訂プロンプトの段階評価） ----
     far_or_none = decel_mask & ~forward_close
-    # ブレーキ中
-    set_range(far_or_none & is_braking & (delta_stop.abs() <= 2.0), 0.8, 1.0, 'ブレーキ中、|delta_stop|<=2m → 0.8〜1.0')
-    set_range(far_or_none & is_braking & (delta_stop.abs() > 2.0) & (delta_stop.abs() <= 5.0), 0.5, 0.7, 'ブレーキ中、2m<|delta_stop|<=5m → 0.5〜0.7')
-    set_range(far_or_none & is_braking & (delta_stop > 5.0) & (delta_stop <= 15.0), 0.2, 0.4, 'ブレーキ中、5m<delta_stop<=15m（早すぎ）→ 0.2〜0.4')
-    set_range(far_or_none & is_braking & (delta_stop > 15.0), 0.1, 0.1, 'ブレーキ中、delta_stop>15m（大幅手前停止確実）→ 0.1')
+    # ブレーキ中（2026-07-15改訂: 1秒ステップの量子化誤差±5mを踏まえて緩和）
+    set_range(far_or_none & is_braking & (delta_stop.abs() <= 5.0), 0.8, 1.0, 'ブレーキ中、|delta_stop|<=5m → 0.8〜1.0')
+    set_range(far_or_none & is_braking & (delta_stop > 5.0) & (delta_stop <= 15.0), 0.5, 0.7, 'ブレーキ中、5m<delta_stop<=15m → 0.5〜0.7')
+    set_range(far_or_none & is_braking & (delta_stop > 15.0) & (delta_stop <= 30.0), 0.3, 0.5, 'ブレーキ中、15m<delta_stop<=30m（早すぎ）→ 0.3〜0.5')
+    set_range(far_or_none & is_braking & (delta_stop > 30.0), 0.1, 0.2, 'ブレーキ中、delta_stop>30m（大幅手前停止確実）→ 0.1〜0.2')
     set_range(far_or_none & is_braking & (delta_stop < -5.0), 0.0, 0.0, 'ブレーキ中、delta_stop<-5m（オーバーラン確実）→ 0.0')
 
     # ブレーキなし

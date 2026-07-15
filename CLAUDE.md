@@ -47,6 +47,14 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 - `*.h5` / `*.pkl`（リポジトリ直下） — 学習済み報酬予測NNの重みとスケーラ
 - `apex_def.py` / `environment_def.py` — 先行研究で使用していた実装。現行のどのスクリプトからも参照されていないため**書き換え禁止**
 
+## 設計上の重要事項（time_step と報酬・割引のスケーリング）
+`environment2.py`の`time_step`は駅手前100m以内で1.0秒→0.1秒に短縮される（`time_step`プロパティ）。停止精度に必要な精密なノッチ制御を可能にするためだが、実時間あたりの整合性を保つため以下の2箇所でステップ幅に比例したスケーリングを行っている。
+
+- **報酬**（`environment2.py`）— NN出力は「1秒あたりの評価値」とみなし、`reward = (llm_reward - 0.5) * (time_step / base_time_step)` でスケール（ゼロ中心化済み）。スケールしないと駅手前で報酬密度が10倍になり「駅手前に留まり続けて報酬を稼ぐ」搾取行動が最適化されてしまう（[[hover-exploit-and-reward-calibration]]の実測問題への対処）。
+- **割引率**（`apex2.py`のActor.gamma）— `gamma**(env.time_step/self.time_step)` で実時間あたりの割引を揃える。
+
+**残る副作用（未解決）:** 実時間あたりの報酬・割引は揃うが、TD更新（ブートストラップ）の回数は駅手前だけ10倍に増える。vanilla maxのDQNではブートストラップ連鎖が長いほど過大評価バイアスが蓄積しやすく、駅前区間でのQ値過大評価やリプレイバッファ内での駅前遷移の過剰代表の一因となる。対策案としてDouble DQN化・ターゲット同期間隔の調整・駅手前のみ行動選択粒度を1秒に維持（Nステップ分を1遷移に集約）などが挙がっている。学習具合は`analyze_qnet_coverage.py`で駅直前領域の行動間ギャップとして追跡できる。
+
 ## 主要スクリプトの役割
 
 ### 強化学習（Apex DQN）本体
@@ -72,6 +80,9 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 - `check_reward_distribution.py` — `train_reward_csv_direct/`内データの報酬分布を可視化
 - `evaluate_result.py` — 個別走行ログCSV（`comp/`）に対する報酬の比較・検証
 
+### 強化学習（QNetwork）の診断・可視化
+- `analyze_qnet_coverage.py` — 学習済み`QNetwork`（`model.py`／25次元入力・3行動出力）の「Qテーブルの埋まり具合」に相当する診断ツール。表形式Q学習ではなく関数近似のため文字通りのテーブルは無いが、「速度 × 駅までの距離」を格子状にスイープした人工状態を`data/<run>/*.weights.h5`にロードした重みで一括推論し、①max Q（過大評価・発散のチェック）②貪欲方策マップ（惰行/力行/ブレーキ）③行動間ギャップ（≒0の領域＝行動を区別できていない未学習に近い領域）の3面ヒートマップを`qnet_analysis/`へ出力する。グリッド2軸以外の23次元は`environment2.py`の`normalized_state`と同一の正規化式で「定時運行・先行列車なし・平坦・制限70km/h」のシナリオ値を埋める（時刻依存の加速フェーズ・路線依存の制限接近フェーズはグリッド再現不可のため対象外）。`--overlay-csv`でTester出力CSV（`comp/`・`data/`配下）の実走行訪問状態を白点で重ね描き、`--pre-action`で直前ノッチのシナリオを変更できる。runごとに実行し駅直前領域の行動間ギャップが育つか（テーブルが埋まるか）を追跡する用途。
+
 ## 実行コマンド例
 ```bash
 # 回帰NNを報酬関数として使うApex DQN学習（本研究で基本的に使用）
@@ -85,4 +96,7 @@ python evaluate_csv_with_llm.py
 
 # NN出力とLLMラベルの分布比較
 python analyze_reward_nn_vs_llm.py
+
+# QNetworkの学習具合（Qテーブルの埋まり具合）を可視化（data/以下の最新重みを自動選択）
+python analyze_qnet_coverage.py --overlay-csv comp/12100_0.csv
 ```
