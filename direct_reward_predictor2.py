@@ -12,8 +12,21 @@ class DirectRewardPredictor:
             self.scaler = joblib.load(scaler_path)
             self.is_loaded = True
 
-            # ▼▼▼ 【修正】入力次元数を 34 から 43 に完全に同期 ▼▼▼
-            @tf.function(input_signature=[tf.TensorSpec(shape=[1, 43], dtype=tf.float32)])
+            # ▼▼▼ 【2026-07-18】クリップ済み特徴の世代自動判別（43/45/46次元の後方互換）▼▼▼
+            # スケーラーが期待する特徴量数でモデル世代を判定し、対応する特徴セットで推論する。
+            # 43=クリップなし / 45=±30m・±20mクリップ / 46=＋±3m細クリップ（1m段差用）
+            n_feat = getattr(self.scaler, 'n_features_in_', 43)
+            self.use_clip_features = (n_feat >= 45)  # 互換のため属性は残す
+            if n_feat >= 46:
+                self._drop_features = ()
+            elif n_feat >= 45:
+                self._drop_features = ('dist_to_station_clip3',)
+                print(f"[Info] 45次元モデル（±3m細クリップなし）として動作します。再学習後は46次元に切り替わります。")
+            else:
+                self._drop_features = ('margin_stop_dist_clip', 'dist_to_station_clip', 'dist_to_station_clip3')
+                print(f"[Info] 旧形式モデル（{n_feat}次元・クリップ済み特徴なし）として動作します。")
+
+            @tf.function(input_signature=[tf.TensorSpec(shape=[1, n_feat], dtype=tf.float32)])
             def predict_fn(x):
                 return self.model(x, training=False)
             self.predict_fn = predict_fn
@@ -26,7 +39,7 @@ class DirectRewardPredictor:
             if os.path.exists(gate_path):
                 self.gate_model = tf.keras.models.load_model(gate_path, compile=False)
 
-                @tf.function(input_signature=[tf.TensorSpec(shape=[1, 43], dtype=tf.float32)])
+                @tf.function(input_signature=[tf.TensorSpec(shape=[1, n_feat], dtype=tf.float32)])
                 def predict_gate_fn(x):
                     return self.gate_model(x, training=False)
                 self.predict_gate_fn = predict_gate_fn
@@ -36,14 +49,18 @@ class DirectRewardPredictor:
         else:
             print(f"[Warning] {model_path} または {scaler_path} が見つかりません。デフォルトの0.0を使用します。")
             self.is_loaded = False
+            self.use_clip_features = False
         
         # 特徴量カラムの並び順（train_reward_network2.py と完全一致）
+        # 45次元（クリップ済み特徴あり）。旧43次元モデル使用時は__init__の判定に基づき
+        # _preprocess_state でクリップ済み特徴2列を除いた行列を構築する。
         self.feature_cols = [
             'hold_coast', 'hold_accel', 'hold_decel',
             'prev_notch_duration',
             'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station',
             'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient',
             'margin_speed', 'margin_signal_speed', 'margin_stop_dist',
+            'margin_stop_dist_clip', 'dist_to_station_clip', 'dist_to_station_clip3',
             'required_speed', 'speed_margin_to_required', 'hunting_score',
             'f_relative_speed', 'b_relative_speed',
             'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
@@ -77,6 +94,11 @@ class DirectRewardPredictor:
         margin_speed = s['speed_limit'] - s['current_speed']
         margin_signal_speed = s['signal_speed'] - s['current_speed']
         margin_stop_dist = s['dist_to_next_station'] - s['req_stop_dist']
+        # 【2026-07-17】停止境界のクリップ済み特徴（train_reward_network2.pyと同一定義）
+        margin_stop_dist_clip = min(max(margin_stop_dist, -30.0), 30.0)
+        dist_to_station_clip = min(max(s['dist_to_next_station'], -20.0), 20.0)
+        # 【2026-07-18】1m段差用の細クリップ特徴
+        dist_to_station_clip3 = min(max(s['dist_to_next_station'], -3.0), 3.0)
 
         # 必要速度（environment2.pyがrequired_speed.pyで算出済みの値をそのまま使用）。
         # 現在速度との差が正なら必要速度未達（力行継続が必要）、負なら惰行への移行余地があることを示す。
@@ -121,6 +143,9 @@ class DirectRewardPredictor:
             'margin_speed': margin_speed,
             'margin_signal_speed': margin_signal_speed,
             'margin_stop_dist': margin_stop_dist,
+            'margin_stop_dist_clip': margin_stop_dist_clip,
+            'dist_to_station_clip': dist_to_station_clip,
+            'dist_to_station_clip3': dist_to_station_clip3,
             'required_speed': required_speed,
             'speed_margin_to_required': speed_margin_to_required,
             'hunting_score': hunting_score,
@@ -148,7 +173,9 @@ class DirectRewardPredictor:
         }
         
         # 厳密な特徴量の順番でソートして1次元化
-        X = np.array([features[col] for col in self.feature_cols], dtype=np.float32)
+        # 旧世代モデル使用時は該当するクリップ済み特徴を除外して後方互換を保つ（__init__で判別済み）
+        cols = [c for c in self.feature_cols if c not in self._drop_features]
+        X = np.array([features[col] for col in cols], dtype=np.float32)
         return X.reshape(1, -1)
 
     def predict_reward(self, state_info):

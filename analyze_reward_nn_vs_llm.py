@@ -131,6 +131,11 @@ def load_raw_data(csv_dir):
     df['margin_speed'] = df['speed_limit'] - df['current_speed']
     df['margin_stop_dist'] = df['dist_to_next_station'] - df['req_stop_dist']
     df['margin_signal_speed'] = df['signal_speed'] - df['current_speed']
+    # 【2026-07-17】停止境界のクリップ済み特徴（train_reward_network2.pyと同一定義・新回帰NN用）
+    df['margin_stop_dist_clip'] = df['margin_stop_dist'].clip(-30.0, 30.0)
+    df['dist_to_station_clip'] = df['dist_to_next_station'].clip(-20.0, 20.0)
+    # 【2026-07-18】1m段差用の細クリップ特徴
+    df['dist_to_station_clip3'] = df['dist_to_next_station'].clip(-3.0, 3.0)
 
     # 分類NN（train_reward_network3.py）向け：旧来の平均速度×1.3近似（変更なし）
     df['safe_time'] = df['time_to_next_station'].clip(lower=1.0)
@@ -210,17 +215,30 @@ CLASSIFICATION_FEATURE_COLS = [
 ]
 
 # 新回帰NN用。'hunting_score_7'（閾値7秒）は学習時の'hunting_score'と同じ位置・同じ意味の特徴量
+# 45次元（クリップ済み特徴あり）。旧43次元モデルの評価時はクリップ済み2列を除いて使用する
 REGRESSION_FEATURE_COLS = [
     'hold_coast', 'hold_accel', 'hold_decel',
     'prev_notch_duration',
     'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient',
-    'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed', 'speed_margin_to_required', 'hunting_score_7',
+    'margin_speed', 'margin_signal_speed', 'margin_stop_dist',
+    'margin_stop_dist_clip', 'dist_to_station_clip', 'dist_to_station_clip3',
+    'required_speed', 'speed_margin_to_required', 'hunting_score_7',
     'f_relative_speed', 'b_relative_speed',
     'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
     'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
     'f_exist', 'f_distance', 'f_speed',
     'b_exist', 'b_distance', 'b_speed'
 ]
+
+
+def clip_drop_features_for(n_features):
+    """スケーラーの期待次元数からモデル世代を判定し、除外すべきクリップ済み特徴を返す。
+    43=クリップなし / 45=±30m・±20mクリップ / 46=＋±3m細クリップ"""
+    if n_features >= 46:
+        return ()
+    if n_features >= 45:
+        return ('dist_to_station_clip3',)
+    return ('margin_stop_dist_clip', 'dist_to_station_clip', 'dist_to_station_clip3')
 
 
 def _dummy_cols(df):
@@ -241,10 +259,11 @@ def build_classification_matrix(df):
     return X, feature_cols, llm_reward, df.reset_index(drop=True)
 
 
-def build_new_regression_matrix(df):
+def build_new_regression_matrix(df, drop_features=()):
     """
     新回帰NN（train_reward_network2.py）と完全一致する特徴量行列を構築する。
     required_speed列を持たない旧形式CSVの行はNaNになるため除外する。
+    drop_features には旧世代モデル用に除外するクリップ済み特徴名を渡す（clip_drop_features_for参照）。
     """
     if 'required_speed' not in df.columns:
         print("[警告] 全CSVに'required_speed'列が存在しないため、新回帰NN（train_reward_network2.py）の評価はスキップします。")
@@ -261,7 +280,8 @@ def build_new_regression_matrix(df):
         print("[警告] 'required_speed'列を持つ有効な行が1件もないため、新回帰NNの評価はスキップします。")
         return None, None, None, None
 
-    feature_cols = REGRESSION_FEATURE_COLS + _dummy_cols(df_reg)
+    base_cols = [c for c in REGRESSION_FEATURE_COLS if c not in drop_features]
+    feature_cols = base_cols + _dummy_cols(df_reg)
     X = df_reg[feature_cols].values.astype(np.float32)
     llm_reward = df_reg['reward'].values.astype(np.float32)
     return X, feature_cols, llm_reward, df_reg.reset_index(drop=True)
@@ -699,14 +719,21 @@ def main():
     X_cls, cls_feature_cols, llm_reward_cls, df_cls = build_classification_matrix(df)
     print(f"旧回帰NN/分類NN向け入力特徴量次元数: {X_cls.shape[1]} (全{len(llm_reward_cls)}行)")
 
-    # 新回帰NNはrequired_speed列が必要なため、対応する行のみの別行列になる
-    X_new_reg, new_reg_feature_cols, llm_reward_new_reg, df_new_reg = build_new_regression_matrix(df)
-    if X_new_reg is not None:
-        print(f"新回帰NN向け入力特徴量次元数: {X_new_reg.shape[1]} (全{len(llm_reward_new_reg)}行)")
-
     old_reg_model, old_reg_scaler = load_model_and_scaler(OLD_REGRESSION_MODEL_PATH, OLD_REGRESSION_SCALER_PATH)
     new_reg_model, new_reg_scaler = load_model_and_scaler(NEW_REGRESSION_MODEL_PATH, NEW_REGRESSION_SCALER_PATH)
     cls_model, cls_scaler = load_model_and_scaler(CLASSIFICATION_MODEL_PATH, CLASSIFICATION_SCALER_PATH)
+
+    # 新回帰NNはrequired_speed列が必要なため、対応する行のみの別行列になる。
+    # クリップ済み特徴の世代（43/45/46次元）はスケーラーの期待次元数から自動判別する
+    drop = ()
+    if new_reg_scaler is not None:
+        n_feat = getattr(new_reg_scaler, 'n_features_in_', 46)
+        drop = clip_drop_features_for(n_feat)
+        if drop:
+            print(f"[Info] 新回帰NNは{n_feat}次元世代として評価します（除外: {drop}）。")
+    X_new_reg, new_reg_feature_cols, llm_reward_new_reg, df_new_reg = build_new_regression_matrix(df, drop_features=drop)
+    if X_new_reg is not None:
+        print(f"新回帰NN向け入力特徴量次元数: {X_new_reg.shape[1]} (全{len(llm_reward_new_reg)}行)")
 
     # ゲート分類器（2段階モデルの1段目）。存在すれば合成推論、なければ旧来の回帰単体推論にフォールバック
     new_gate_model = None

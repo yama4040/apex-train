@@ -517,7 +517,8 @@ class Tester:
                 # 運転フェーズのテキスト逆生成
                 # （出発遅延がある場合、env.tは遅延分から開始するため経過時間で判定する）
                 elapsed_t = current_t - getattr(env, 'episode_start_t', 0.0)
-                if dist_to_next_station <= 10.0 and current_speed <= 0.1:
+                # 【2026-07-18】environment2._get_current_phase_strと同期（0.1→0.5、目標達成条件と一致）
+                if dist_to_next_station <= 10.0 and current_speed <= 0.5:
                     phase_str = "駅停車完了（速度0km/h）"
                 elif elapsed_t <= 20.0:
                     phase_str = "駅出発直後の加速フェーズ（20秒以内）"

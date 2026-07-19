@@ -111,7 +111,19 @@ def load_and_preprocess_data(csv_dir):
     # 1. 速度と距離の余裕度
     df['margin_speed'] = df['speed_limit'] - df['current_speed']
     df['margin_stop_dist'] = df['dist_to_next_station'] - df['req_stop_dist']
-    
+
+    # ▼▼▼ 【改修 2026-07-17】停止境界のクリップ済み特徴量 ▼▼▼
+    # margin_stop_dist は全データでσ≈775mのスケールになるため、StandardScaler正規化後は
+    # 「±5mの停止境界」が0.0064σにしかならず、NNから原理的に見えない
+    # （ブレーキ判断マップ・停車完了がΔに対しフラットになる根本原因だった）。
+    # 判断に効くレンジだけを切り出したクリップ済み特徴を追加し、境界を可視化する。
+    df['margin_stop_dist_clip'] = df['margin_stop_dist'].clip(-30.0, 30.0)   # ブレーキ開始判断レンジ
+    df['dist_to_station_clip'] = df['dist_to_next_station'].clip(-20.0, 20.0)  # 停止誤差レンジ
+    # 【2026-07-18】停車完了の1m段差（±1m→1.0 / 1〜3m→0.8）用の細クリップ特徴。
+    # ±20mクリップではσ≈10mとなり1mの差が0.1σで埋もれる（0.2mでも1.5mでも0.8のフラット化を実測）。
+    # ±3mクリップならσ≈2mで1m=約0.5σとなり、境界が通常の学習で見えるようになる。
+    df['dist_to_station_clip3'] = df['dist_to_next_station'].clip(-3.0, 3.0)
+
     # ▼▼▼ 【改修2】現在速度とCBTC信号現示のマージンを追加 ▼▼▼
     df['margin_signal_speed'] = df['signal_speed'] - df['current_speed']
     
@@ -174,12 +186,16 @@ def load_and_preprocess_data(csv_dir):
     df['b_distance'] = df['b_distance'].clip(upper=2000.0)
     
     # ▼▼▼ 【改修】学習特徴量の見直し ▼▼▼
+    # ※並び順は direct_reward_predictor2.py / analyze_reward_nn_vs_llm.py と完全に一致させること
     feature_cols = [
-        'hold_coast', 'hold_accel', 'hold_decel', 
+        'hold_coast', 'hold_accel', 'hold_decel',
         'prev_notch_duration',
         'speed_limit', 'signal_speed', 'current_speed', 'dist_to_next_station', 'time_to_next_station', 'req_stop_dist', 'delay', 'current_gradient', # signal_speed追加
         # 派生特徴量
-        'margin_speed', 'margin_signal_speed', 'margin_stop_dist', 'required_speed', 'speed_margin_to_required', 'hunting_score', # margin_signal_speed追加
+        'margin_speed', 'margin_signal_speed', 'margin_stop_dist',
+        'margin_stop_dist_clip', 'dist_to_station_clip',  # 【2026-07-17追加】停止境界のクリップ済み特徴
+        'dist_to_station_clip3',  # 【2026-07-18追加】1m段差用の細クリップ特徴
+        'required_speed', 'speed_margin_to_required', 'hunting_score', # margin_signal_speed追加
         'f_relative_speed', 'b_relative_speed', # f_ttc, b_ttcを削除
         'next_limit_flag', 'next_limit_dist', 'next_limit_speed',
         'next_gradient_flag', 'next_gradient_dist', 'next_gradient_val',
@@ -307,6 +323,14 @@ def plot_learning_curve(history, out_path='learning_curve_direct.png'):
 # 「reward=0.0」とみなすラベルの閾値（浮動小数の丸め誤差対策）
 ZERO_THRESHOLD = 0.05
 
+# 【2026-07-19】停車完了フェーズ行の損失重み係数。
+# 停車完了は全体の約9%しかなく、回帰の平滑化で頂点が潰れる（教師平均0.957に対し
+# 出力0.9止まり・1m段差の位置ずれ）ため、損失への寄与を引き上げて優先的に合わせさせる。
+# clip3特徴で境界は「見える」状態になっているので、あとは優先度の問題という位置づけ。
+# ゲート分類器にも適用し、停車完了での誤0.0判定（良い停車への外れ値）も抑える。
+STOP_PHASE_WEIGHT = 3.0
+STOP_PHASE_COL = 'phase_駅停車完了（速度0km/h）'
+
 def main(csv_dir='train_reward_csv_direct',
          model_path='direct_reward_model2.h5',
          gate_path='direct_reward_gate2.h5',
@@ -340,10 +364,19 @@ def main(csv_dir='train_reward_csv_direct',
     # （direct_reward_predictor2.py側の合成ロジックと対応）。
     # =====================================================================
 
+    # --- 停車完了フェーズ行の識別（サンプル重み用） ---
+    stop_col_idx = feature_cols.index(STOP_PHASE_COL)
+    train_is_stop = X_train[:, stop_col_idx] >= 0.5
+    print(f"\n[サンプル重み] 停車完了フェーズ行: 学習{int(train_is_stop.sum())}件に重み×{STOP_PHASE_WEIGHT}を適用")
+
     # --- 1段目: ゲート分類器 ---
     y_train_zero = (y_train.flatten() <= ZERO_THRESHOLD).astype(np.float32).reshape(-1, 1)
     y_test_zero = (y_test.flatten() <= ZERO_THRESHOLD).astype(np.float32).reshape(-1, 1)
-    print(f"\n[ゲート分類器] 0.0ラベル: {int(y_train_zero.sum())}件 / 非0.0: {int(len(y_train_zero) - y_train_zero.sum())}件")
+    print(f"[ゲート分類器] 0.0ラベル: {int(y_train_zero.sum())}件 / 非0.0: {int(len(y_train_zero) - y_train_zero.sum())}件")
+
+    # 停車完了行の判定ミス（良い停車への誤0.0）を抑えるため、ゲートにも同じ重みを適用
+    gate_sample_weight = np.where(train_is_stop, STOP_PHASE_WEIGHT, 1.0).astype(np.float32)
+    gate_sample_weight = gate_sample_weight / gate_sample_weight.mean()
 
     gate_model = build_gate_model(X_train_scaled.shape[1])
     gate_early_stop = EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
@@ -351,6 +384,7 @@ def main(csv_dir='train_reward_csv_direct',
     print("ゲート分類器の学習を開始します...")
     gate_model.fit(
         X_train_scaled, y_train_zero,
+        sample_weight=gate_sample_weight,
         validation_data=(X_test_scaled, y_test_zero),
         epochs=epochs,
         batch_size=64,
@@ -369,6 +403,9 @@ def main(csv_dir='train_reward_csv_direct',
 
     # ▼▼▼ 少数派ラベル(0.7付近など)の損失への寄与を高める重み（sqrt緩和済み） ▼▼▼
     train_sample_weight_nz, _ = compute_bin_sample_weights(y_train_nz)
+    # 停車完了フェーズ行の重みを引き上げ（ビン重みとの積。平均1.0に再正規化して学習率への影響を防ぐ）
+    train_sample_weight_nz = train_sample_weight_nz * np.where(train_is_stop[nonzero_train], STOP_PHASE_WEIGHT, 1.0).astype(np.float32)
+    train_sample_weight_nz = train_sample_weight_nz / train_sample_weight_nz.mean()
 
     model = build_model(X_train_nz.shape[1])
     print("回帰器の学習を開始します...")

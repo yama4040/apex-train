@@ -46,6 +46,8 @@ class Environment:
         self.arrival_station = self.stations[departure_index + 1]
         start_position = self.departure_station["position"] + start_position_offset
         self.train = Train(self.arrival_station["position"], start_position, 0.0, weight_correction)
+        # 制限速度の駅通過後フォールバック用キャッシュ（current_speed_limitプロパティ参照）
+        self._last_speed_limit = max(self.train.current_speed_limit, 1.0)
         self.fowerd_train = None
         self.fowerd_train_time_offset = fowerd_train_time_offset  # 追加
         
@@ -62,7 +64,10 @@ class Environment:
             # ▼【変更】時間オフセット(headway)に基づいて初期位置を割り出す
             if len(self.fowerd_train_controls) > 0 and self.fowerd_train_time_offset is not None:
                 # CSVインデックス（経過秒数）の計算。最大値を超えないように制限
-                start_idx = min(int(self.fowerd_train_time_offset), len(self.fowerd_train_controls) - 1)
+                # 【修正】自列車に出発遅延がある場合、先行列車はその分だけ先に進んでいる。
+                # 旧実装はheadwayのみで初期位置を決めていたため、走行中の参照（int(t+offset)、
+                # tは遅延から開始）と食い違い、初回更新で遅延秒数分ワープしていた。
+                start_idx = min(int(self.fowerd_train_time_offset + delay), len(self.fowerd_train_controls) - 1)
                 
                 self.fowerd_train = Train(
                     self.arrival_station["position"], 
@@ -101,6 +106,7 @@ class Environment:
         self._stall_check_t = self.t
         self._stall_check_pos = self.train.position
 
+
         self.pre_action = Actions.deceleration
         self.holding_time = 30
         # ▼▼▼ 新規追加: 直前のノッチ操作と保持時間の初期化 ▼▼▼
@@ -116,16 +122,26 @@ class Environment:
         #if (self.fowerd_train is not None and self.fowerd_train.speed <= 0.0 and self.fowerd_train.position > self.arrival_station["position"]): 
             #self.fowerd_train = None
             
-        # ▼【変更】先行列車のアクション適用
+        # ▼【修正】先行列車はCSVの記録軌道（position/speed）を直接再生する（線形補間付き）
+        # 旧実装はCSVのアクション列を物理モデルで開ループ再生していたが、初期状態の丸め
+        # （速度0.01km/h単位）とバンバン制御の切替感度により軌道が再現されず、停車を含む
+        # パターンでは停止イベント付近で分岐的に発散して最大約200mの乖離・CSVに存在しない
+        # 途中停止や再加速が発生していた（実測: f_train_delay0_stop30で197m手前に停止）。
+        # 記録済みの位置・速度を直接セットする方式なら、開始時刻の小数・0.1秒ステップ・
+        # 物理モデルの差異のすべてに対してCSVと厳密に一致する。
         if self.fowerd_train is not None:
-            # 現在の自列車時刻 ＋ 出発間隔 ＝ 先行列車の稼働時間
-            f_t = int(self.t + self.fowerd_train_time_offset)
-            
-            if f_t >= len(self.fowerd_train_controls):
-                # CSVのデータを超えたらとりあえずブレーキ
-                self.fowerd_train.step(Actions.deceleration, 1)
-            elif round(self.t % 1, 1) == 0:
-                self.fowerd_train.step(self.fowerd_train_controls[f_t]["action"], 1)
+            ctr = self.fowerd_train_controls
+            # 自列車のこのステップ完了後の時刻に同期させる（報酬・CBTC計算はステップ後状態で行うため）
+            f_tau = self.t + self.time_step + self.fowerd_train_time_offset
+            idx = int(f_tau)
+            if idx >= len(ctr) - 1:
+                # CSVの記録範囲を超えたら最終行の状態で保持
+                self.fowerd_train.set_states(ctr[-1]["speed"], ctr[-1]["position"])
+            else:
+                frac = f_tau - idx
+                p = ctr[idx]["position"] + (ctr[idx + 1]["position"] - ctr[idx]["position"]) * frac
+                v = ctr[idx]["speed"] + (ctr[idx + 1]["speed"] - ctr[idx]["speed"]) * frac
+                self.fowerd_train.set_states(v, p)
         
         action_enum = Actions(action)
         time_step = self.time_step
@@ -269,13 +285,26 @@ class Environment:
             failed = True
 
         # ② 目標達成（駅の許容範囲内に停止）
-        # -10m(0.01km) 〜 +5m(0.005km) の範囲で速度0になったら無事到着として終了
-        if self.position >= self.arrival_station["position"] - 0.01 and self.position <= self.arrival_station["position"] + 0.005 and self.speed <= 0.0:
+        # -10m(0.01km) 〜 +5m(0.005km) の範囲で実質停止（0.5km/h以下）したら無事到着として終了。
+        # 【修正】旧実装は速度0.0ちょうどを要求していたため、窓内で0.09km/h等まで減速した
+        # 「準停車」が停滞検出⑥で失敗扱いになっていた（20260716124442のcycle2800で実測）。
+        # ほぼ完璧な停車と暴走が同じ扱いでは停止への学習勾配が生まれないため、
+        # ⑤の「実質停止」と同じ0.5km/h閾値に統一する（0.5km/h=秒速14cm）。
+        if self.position >= self.arrival_station["position"] - 0.01 and self.position <= self.arrival_station["position"] + 0.005 and self.speed <= 0.5:
             done = True
             goal_reached = True
+            # 【2026-07-17】終端報酬のイベント化: 停止の精度は「時間あたりのレート」ではなく
+            # 1回のイベントの評価なので、終端ステップだけはtime_stepスケール（駅前0.1秒＝×0.1）を
+            # 外して満額で与える。スケール付きだと満点停車(1.0)と誤差8m(0.2)のリターン差が
+            # 0.08しかなくQ値のノイズに埋もれるため、±1m精度への学習勾配が生まれなかった。
+            reward = (llm_reward - 0.5)
 
         # ③ 先行列車への異常接近・衝突判定
-        if self.fowerd_train_position is not None and self.speed <= 0.0 and self.position >= self.fowerd_train_position - 0.05:
+        # 【修正】閾値を50m→40mに変更。CBTCの停止限界は先行列車の50m手前であり、
+        # そこにぴったり停止するのは設計上の正解挙動なのに、旧実装（50m）では
+        # 「正しく停止限界に止まった瞬間に衝突失敗」になっていた。
+        # LLM評価プロンプトの衝突定義（接近距離40m未満）と揃える。
+        if self.fowerd_train_position is not None and self.speed <= 0.0 and self.position >= self.fowerd_train_position - 0.04:
             done = True
             failed = True
 
@@ -304,11 +333,17 @@ class Environment:
         # 判定窓を10秒に短縮し、より早く停滞を検出する。
         near_station = self.station_remaining_distance <= 0.4
         stall_window = 10.0 if near_station else 30.0
+        # 【2026-07-17】駅20m以内は停滞検出の対象外とする。±1m精度の停車には
+        # 「1〜3km/hで最後の数mを詰める」最終進入が必須だが、平均1.8km/h未満となり
+        # ⑥に該当してしまう（実測: 停車直前の終端速度が0.54〜0.60km/hに密集＝
+        # 目標達成の一歩手前で打ち切られていた）。この圏内はタイムオーバー①・
+        # 実質停止⑤（10m超手前のみ）・ゼロ中心報酬の負レートが引き続き抑止する。
+        in_final_zone = self.station_remaining_distance <= 0.02
         if self.t - self._stall_check_t >= stall_window:
             progress = self.position - self._stall_check_pos
             # 10秒窓: 5m未満（平均1.8km/h未満）／ 30秒窓: 25m未満（平均3km/h未満）
             min_progress = 0.005 if near_station else 0.025
-            if not goal_reached:
+            if not goal_reached and not in_final_zone:
                 if self.fowerd_train_position is None:
                     # 先行列車がいない場合: 規定の前進がなければちんたら運転として打ち切る
                     if progress < min_progress:
@@ -350,7 +385,10 @@ class Environment:
         # この分岐がないと、停車した瞬間の終端報酬が「減速フェーズ」として評価されてしまい、
         # プロンプトの「停車完了フェーズ＝停止位置誤差の段階評価」ルールがRL中に一度も発動しない。
         # また、DQN観測ベクトルのphase_5（停車完了）も常に0の死んだ入力になってしまう。
-        if self.station_remaining_distance * 1000.0 <= 10.0 and self.speed <= 0.1:
+        # 【2026-07-18】速度閾値を0.1→0.5に変更し、目標達成条件（v≤0.5で終了）と同期。
+        # 0.1のままだと終端速度0.5〜0.6で終わる停車が「減速フェーズ×ブレーキ」として採点され、
+        # |Δ|≤5一律高評価の経路に入って停止誤差7.7mでも+0.50が付く逆転が起きていた（実測）。
+        if self.station_remaining_distance * 1000.0 <= 10.0 and self.speed <= 0.5:
             return "駅停車完了（速度0km/h）"
         # 出発遅延がある場合もエピソード開始からの経過時間で判定する
         if self.t - getattr(self, 'episode_start_t', 0.0) <= 20.0:
@@ -596,7 +634,16 @@ class Environment:
 
     @property
     def current_speed_limit(self):
-        return self.train.current_speed_limit
+        # 【2026-07-18】駅通過後のフォールバック: 位置がTARGET_STATIONを越えると
+        # Train.front_sectionsが空になりcurrent_speed_limitが0を返す。数cmの過走停車でも
+        # 制限速度・CBTC現示が0になり、NNが「信号超過」と判定して完璧な停車（誤差−0.06m）に
+        # 報酬0.0が付く逆転が起きていた（実測）。エピソード中に最後に観測した非ゼロの
+        # 制限速度を維持することで、停止窓内の過走側でも区間の制限速度が保たれる。
+        lim = self.train.current_speed_limit
+        if lim <= 0.0:
+            return self._last_speed_limit
+        self._last_speed_limit = lim
+        return lim
 
     @property
     def speed(self):
