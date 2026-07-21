@@ -107,8 +107,14 @@ class DirectRewardPredictor:
 
         # ノコギリ運転スコア化（閾値はLLM評価プロンプトのノコギリ判定と同じ7秒。
         # train_reward_network2.pyの特徴量エンジニアリングと完全に一致させること）
+        # ※hunting_scoreは生のholding_time（7秒閾値判定）を使うのでクリップしない。
         is_hunting = (s['holding_time'] < 7.0) and (s['prev_notch_duration'] < 7.0) and (s['current_notch'] != s['prev_notch'])
         hunting_score = max(0.0, 7.0 - s['holding_time']) / 7.0 if is_hunting else 0.0
+
+        # 【2026-07-20】保持時間系を30秒でクリップ（train_reward_network2.py・DQN観測と統一）。
+        # 長い惰行/ブレーキ後の外れ値でゲートが誤発火するのを防ぐ（14500_0.csvの実測事故）。
+        holding_clip = min(s['holding_time'], 30.0)
+        prev_notch_duration_clip = min(s['prev_notch_duration'], 30.0)
         
         # テキスト情報のパース
         nl_flag, nl_dist, nl_speed = self._extract_limit_info(s['next_limit_info'])
@@ -128,10 +134,10 @@ class DirectRewardPredictor:
         
         # カラム名に合わせた辞書の作成
         features = {
-            'hold_coast': s['holding_time'] * is_coast,
-            'hold_accel': s['holding_time'] * is_accel,
-            'hold_decel': s['holding_time'] * is_decel,
-            'prev_notch_duration': s['prev_notch_duration'],
+            'hold_coast': holding_clip * is_coast,
+            'hold_accel': holding_clip * is_accel,
+            'hold_decel': holding_clip * is_decel,
+            'prev_notch_duration': prev_notch_duration_clip,
             'speed_limit': s['speed_limit'],
             'signal_speed': s['signal_speed'],
             'current_speed': s['current_speed'],

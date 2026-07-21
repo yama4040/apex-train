@@ -126,5 +126,5 @@ def evaluate_csv(csv_path, start_position, speed_limit_path):
     print("===============================\n")
     
 if __name__ == "__main__":
-    target_csv = sys.argv[1] if len(sys.argv) > 1 else "comp/12100_0.csv"
+    target_csv = sys.argv[1] if len(sys.argv) > 1 else "comp/14500_0.csv"
     evaluate_csv(target_csv, START_POSITION, SPEED_LIMIT_CSV)

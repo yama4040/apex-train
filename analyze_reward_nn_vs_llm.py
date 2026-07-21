@@ -180,9 +180,14 @@ def load_raw_data(csv_dir):
 
     df = pd.get_dummies(df, columns=['phase', 'current_notch', 'prev_notch'], dummy_na=False)
 
-    df['hold_coast'] = df['holding_time'] * df['current_notch_惰行中']
-    df['hold_accel'] = df['holding_time'] * df['current_notch_力行（加速）中']
-    df['hold_decel'] = df['holding_time'] * df['current_notch_ブレーキ（減速）中']
+    # 【2026-07-20】保持時間系を30秒でクリップ（train_reward_network2.py・DQN観測と統一）。
+    # hunting_score系（上で計算済み）は生のholding_time/prev_notch_durationを7秒閾値で使うため、
+    # クリップはこの位置（hunting計算後）で行う。
+    holding_clip = df['holding_time'].clip(upper=30.0)
+    df['prev_notch_duration'] = df['prev_notch_duration'].clip(upper=30.0)
+    df['hold_coast'] = holding_clip * df['current_notch_惰行中']
+    df['hold_accel'] = holding_clip * df['current_notch_力行（加速）中']
+    df['hold_decel'] = holding_clip * df['current_notch_ブレーキ（減速）中']
 
     df['next_limit_flag'], df['next_limit_dist'], df['next_limit_speed'] = zip(*df['next_limit_info'].apply(extract_limit_info))
     df['next_gradient_flag'], df['next_gradient_dist'], df['next_gradient_val'] = zip(*df['next_gradient_info'].apply(extract_gradient_info))

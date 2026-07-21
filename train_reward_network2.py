@@ -158,10 +158,17 @@ def load_and_preprocess_data(csv_dir):
     df['prev_notch'] = pd.Categorical(df['prev_notch'], categories=prev_notch_categories)
     
     df = pd.get_dummies(df, columns=['phase', 'current_notch', 'prev_notch'], dummy_na=False)
-    
-    df['hold_coast'] = df['holding_time'] * df['current_notch_惰行中']
-    df['hold_accel'] = df['holding_time'] * df['current_notch_力行（加速）中']
-    df['hold_decel'] = df['holding_time'] * df['current_notch_ブレーキ（減速）中']
+
+    # 【2026-07-20】保持時間系を30秒でクリップ（DQN観測 environment2.normalized_state と統一）。
+    # クリップしないと長い惰行/ブレーキ後（例: 55秒）が hold_* で+12σ、prev_notch_duration で+2.8σの
+    # 外れ値になり、ゲート分類器がその領域で誤発火して正当なブレーキに0.0を出す事故が起きた
+    # （14500_0.csvで実測。回帰器は0.96と正しいのにゲートのハード閾値で1.0→0.0に反転）。
+    # ノコギリ判定（7秒閾値）はhunting_scoreが別途担うため、30秒超の情報損失はない。
+    holding_clip = df['holding_time'].clip(upper=30.0)
+    df['prev_notch_duration'] = df['prev_notch_duration'].clip(upper=30.0)
+    df['hold_coast'] = holding_clip * df['current_notch_惰行中']
+    df['hold_accel'] = holding_clip * df['current_notch_力行（加速）中']
+    df['hold_decel'] = holding_clip * df['current_notch_ブレーキ（減速）中']
     
     df['next_limit_flag'], df['next_limit_dist'], df['next_limit_speed'] = zip(*df['next_limit_info'].apply(extract_limit_info))
     df['next_gradient_flag'], df['next_gradient_dist'], df['next_gradient_val'] = zip(*df['next_gradient_info'].apply(extract_gradient_info))
@@ -331,6 +338,16 @@ ZERO_THRESHOLD = 0.05
 STOP_PHASE_WEIGHT = 3.0
 STOP_PHASE_COL = 'phase_駅停車完了（速度0km/h）'
 
+# 【2026-07-20】停車完了フェーズの1.0（完璧な停止）ラベルの損失重み係数。
+# 回帰器は非0.0行のみで学習するため、最多数の1.0ビン（約9,600行）がビン重み(1/√件数)で
+# 最小になり、停車完了の1.0が2.6%まで圧縮＝±1m停車の終端報酬勾配が消えていた。
+# 【2026-07-21 重要修正】当初は全1.0ラベルに適用したが、1.0ラベルの大半は巡航フェーズであり、
+# 巡航のNN出力が0.75→0.98に過度に上昇（ゼロ中心化後+0.48/秒）した結果、報酬スプレッドが消えて
+# 生存バイアスが復活しQ値が発散した（run 20260720223422のcyc12900で崩壊）。
+# そのため適用対象を「停車完了フェーズの1.0のみ」に限定し、巡航の報酬スプレッドを保つ。
+CEILING_LABEL_WEIGHT = 2.5
+CEILING_LABEL_THRESHOLD = 0.95
+
 def main(csv_dir='train_reward_csv_direct',
          model_path='direct_reward_model2.h5',
          gate_path='direct_reward_gate2.h5',
@@ -405,6 +422,12 @@ def main(csv_dir='train_reward_csv_direct',
     train_sample_weight_nz, _ = compute_bin_sample_weights(y_train_nz)
     # 停車完了フェーズ行の重みを引き上げ（ビン重みとの積。平均1.0に再正規化して学習率への影響を防ぐ）
     train_sample_weight_nz = train_sample_weight_nz * np.where(train_is_stop[nonzero_train], STOP_PHASE_WEIGHT, 1.0).astype(np.float32)
+    # 停車完了フェーズの1.0（完璧な停止）ラベルの重みを引き上げ、頂点が0.9に潰れる問題を是正。
+    # 【2026-07-21】巡航の1.0まで押し上げるとQ値が発散するため、停車完了フェーズに限定する。
+    y_train_nz_flat = y_train_nz.flatten()
+    ceiling_mask = (y_train_nz_flat >= CEILING_LABEL_THRESHOLD) & train_is_stop[nonzero_train]
+    train_sample_weight_nz = train_sample_weight_nz * np.where(
+        ceiling_mask, CEILING_LABEL_WEIGHT, 1.0).astype(np.float32)
     train_sample_weight_nz = train_sample_weight_nz / train_sample_weight_nz.mean()
 
     model = build_model(X_train_nz.shape[1])
