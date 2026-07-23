@@ -176,3 +176,79 @@ def calculate_required_speed(current_speed: float, dist_to_next_station: float, 
             hi = mid
 
     return min(hi, speed_limit)
+
+
+# ==========================================
+# 機外停車（駅間停車）回避のための加速上限速度
+#   駅間停車防止モードで「先行列車に追いつかず機外停車せずに進める上限速度」を算出する。
+#   calculate_required_speed の制約を「定刻までに駅到着」から
+#   「先行がクリアするまで駅に着かない（先行に追いつかない）」へ差し替えたもの。
+#   実効所要時間 = max(定刻残り時間, 先行クリア残時間 + 安全マージン) を渡すだけで、
+#   同じ走行シミュレーション＋二分探索から加速上限が得られる。
+#   （詳細は docs_先行列車対応_設計メモ.md §5「駅間停車防止モードの加速上限評価」）
+# ==========================================
+
+# 機外停車回避の安全マージン[s]。先行がクリアした瞬間ちょうどに駅到着するのではなく、
+# 少し余裕を持って（先行が十分に前方へ離れてから）到着させるための加算時間。
+# ※スモークテストで調整予定の暫定値（設計メモ §5「要決定の残パラメータ」）。
+NO_STOP_SAFETY_MARGIN_S = 15.0
+
+
+def calculate_no_stop_target_speed(current_speed: float, dist_to_next_station: float,
+                                   time_to_next_station: float, forward_clear_remaining_time: float,
+                                   speed_limit: float, current_gradient: float = 0.0,
+                                   safety_margin: float = NO_STOP_SAFETY_MARGIN_S) -> float:
+    """
+    機外停車（駅間停車）を避けつつ進める「加速上限（目標巡航速度）」[km/h]を算出する。
+
+    駅間停車防止モードにおける評価基準値。現在速度をこの値付近まで（超えない範囲で）
+    上げるのは適切、明確に超える力行は「先行に追いついて機外停車を招く過剰加速」として減点、
+    という上限として用いる。
+
+    Args:
+        forward_clear_remaining_time: 先行列車が自列車の次駅を発車するまでの残り秒数。
+            駅標準停車時間は全列車30秒として算出する（呼び出し側で先行軌道から計算）。
+            先行がいない／既にクリアした場合は0以下を渡せばよく、その場合は
+            calculate_required_speed（定刻ベース）と同値になる。
+
+    実効所要時間 = max(定刻残り時間, 先行クリア残時間 + 安全マージン)。
+    先行が長く塞ぐほど実効所要時間が伸び、上限速度は下がる（低速で惰行して進めば機外停車しない）。
+    先行がクリアすると自動的に通常の required_speed と一致し、解放後の再加速が適切になる。
+
+    【重要】上限速度は「現在速度に依存しない状況ベースの値」として算出する。
+    calculate_required_speed は「現在速度のまま惰行で間に合えば現在速度を返す」仕様で早着を許容するため、
+    列車が加速するほど上限も上がってしまい過剰加速を検知できない。そこで機外停車回避では
+    「その速度から惰行すると実効所要時間ちょうどに次駅へ到着する速度」を二分探索で求める。
+    現在速度がこの上限を超えていれば、惰行しても早着＝先行に追いつき機外停車、を意味する。
+    """
+    # 先行がクリア済み／先行なし（先行クリア残時間が0以下）の場合は塞ぎがないため、
+    # 安全マージンに関わらず通常の required_speed に委ねる（駅接近で残り時間が小さいと
+    # マージンにより target が不当に下がるのを防ぐ）。
+    if forward_clear_remaining_time <= 0.0:
+        return calculate_required_speed(current_speed, dist_to_next_station, time_to_next_station,
+                                        speed_limit, current_gradient)
+
+    effective_time = max(time_to_next_station, forward_clear_remaining_time + safety_margin)
+
+    # 実効所要時間が定刻残り時間と同じ（先行が定刻より早くクリア）の場合も通常の required_speed に委ねる。
+    if effective_time <= time_to_next_station + 1e-6:
+        return calculate_required_speed(current_speed, dist_to_next_station, time_to_next_station,
+                                        speed_limit, current_gradient)
+    if dist_to_next_station <= 0.0 or speed_limit <= 0.0:
+        return 0.0
+
+    # 「速度vから惰行→ブレーキ停止」でちょうど effective_time に次駅到着する v を二分探索する。
+    # 惰行の走行時間は v が高いほど短い（＝早着）。v が高すぎれば早着（機外停車リスク）、
+    # 低すぎれば遅着。current_speed には依存しない。
+    lo, hi = 1.0, speed_limit
+    for _ in range(24):
+        mid = (lo + hi) / 2.0
+        t_sim, d_sim = simulate_trip_time(mid, mid, dist_to_next_station, current_gradient)
+        if d_sim < dist_to_next_station - ARRIVAL_TOL_M:
+            # 惰行だけでは次駅に到達しきれない＝所要時間過大とみなし、より高い速度を探索
+            t_sim = SIM_MAX_TIME
+        if t_sim > effective_time:
+            lo = mid   # 遅着 → もっと速く
+        else:
+            hi = mid   # 早着 → もっと遅く
+    return min(hi, speed_limit)

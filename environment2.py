@@ -50,8 +50,11 @@ class Environment:
         self._last_speed_limit = max(self.train.current_speed_limit, 1.0)
         self.fowerd_train = None
         self.fowerd_train_time_offset = fowerd_train_time_offset  # 追加
-        
-        if (fowerd_train_controls): 
+        # 先行列車が自列車の次駅(arrival_station)を発車するCSV時刻[s]（エピソード定数、先行なし時None）。
+        # 駅間停車防止モードの「先行クリア残時間」算出に用いる。
+        self.forward_depart_time = None
+
+        if (fowerd_train_controls):
             ftc = self.read_csv(fowerd_train_controls)
             self.fowerd_train_controls = []
             for i in range(len(ftc)):
@@ -70,11 +73,13 @@ class Environment:
                 start_idx = min(int(self.fowerd_train_time_offset + delay), len(self.fowerd_train_controls) - 1)
                 
                 self.fowerd_train = Train(
-                    self.arrival_station["position"], 
-                    self.fowerd_train_controls[start_idx]["position"], 
-                    self.fowerd_train_controls[start_idx]["speed"], 
+                    self.arrival_station["position"],
+                    self.fowerd_train_controls[start_idx]["position"],
+                    self.fowerd_train_controls[start_idx]["speed"],
                     1.0
                 )
+                # 先行が次駅を発車するCSV時刻を1度だけ算出（エピソード定数）
+                self.forward_depart_time = self._compute_forward_depart_time()
             else:
                 self.fowerd_train = None
                 print(f"\n[警告] {fowerd_train_controls} 先行列車なしとして扱います。")
@@ -594,7 +599,44 @@ class Environment:
     def fowerd_train_remaining_distance(self):
         if (self.fowerd_train_position is None): return self.station_remaining_distance
         return self.fowerd_train_position - self.position
-    
+
+    def _compute_forward_depart_time(self):
+        """先行列車が自列車の次駅(arrival_station)を発車するCSV時刻[s]を返す。
+        先行がその駅で停車してから再発車する時刻。停車しない/該当なしの場合はNone。
+        駅間停車防止モードの「先行クリア残時間」算出に用いる（駅停車時間は先行CSVに織り込み済み）。"""
+        ctr = getattr(self, 'fowerd_train_controls', None)
+        if not ctr:
+            return None
+        P = self.arrival_station["position"]
+        stopped_at_station = False
+        for c in ctr:
+            # 次駅位置付近で停車（速度≈0）したことを記録
+            if abs(c["position"] - P) < 0.05 and c["speed"] < 0.5:
+                stopped_at_station = True
+            # 停車後、再び動き出した（速度回復）最初の時刻＝発車時刻
+            elif stopped_at_station and c["speed"] > 0.5 and c["position"] >= P - 0.05:
+                return float(c["time"])
+        return None
+
+    @property
+    def forward_clear_remaining_time(self):
+        """先行列車が自列車の次駅を発車するまでの残り秒数[s]（走行中の現在値、0以上）。
+        先行なし／既に発車済み／該当なしの場合は0を返す（＝target_speed_no_stopが通常のrequired_speedに縮退）。"""
+        if self.fowerd_train is None or self.forward_depart_time is None:
+            return 0.0
+        offset = self.fowerd_train_time_offset if self.fowerd_train_time_offset is not None else 0.0
+        return max(0.0, self.forward_depart_time - (self.t + offset))
+
+    @property
+    def forward_departed_next(self):
+        """先行列車が自列車の次駅を発車済みかを表す文字列（プロンプト表示用）。
+        先行なしは空文字、未算出時も空文字。"""
+        if self.fowerd_train is None or self.forward_depart_time is None:
+            return ""
+        offset = self.fowerd_train_time_offset if self.fowerd_train_time_offset is not None else 0.0
+        return "発車済み" if (self.t + offset) >= self.forward_depart_time else "未発車"
+
+
     @property
     def remaining_time(self):
         if (self.fowerd_train_position is None): return self.departure_station["running_time"] - self.t

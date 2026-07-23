@@ -6,3 +6,4 @@ __pycache__/
 dataset（0～1.0）/
 dataset（-1.0～1.0）/
 train_reward_csv_direct/
+train_reward_csv_direct_copy/

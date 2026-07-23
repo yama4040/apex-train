@@ -30,7 +30,32 @@ from model import QNetwork
 
 from environment2 import Environment
 from actions import Actions
-from required_speed import calculate_required_speed, brake_stop_distance_m
+from required_speed import calculate_required_speed, brake_stop_distance_m, calculate_no_stop_target_speed
+
+# 先行列車の走行パターンCSV（全10種: low50 ＋ delay{0,5,10}×stop{30,45,60}）。
+# Actor（学習）・Tester（検証）で共有し、駅間停車防止モードの塞ぎシナリオを網羅する。
+ALL_F_TRAIN_CSVS = [
+    "input/f_train_low50.csv",
+    "input/f_train_delay0_stop30.csv",
+    "input/f_train_delay0_stop45.csv",
+    "input/f_train_delay0_stop60.csv",
+    "input/f_train_delay5_stop30.csv",
+    "input/f_train_delay5_stop45.csv",
+    "input/f_train_delay5_stop60.csv",
+    "input/f_train_delay10_stop30.csv",
+    "input/f_train_delay10_stop45.csv",
+    "input/f_train_delay10_stop60.csv",
+]
+
+
+def parse_forward_train_delay(csv_path):
+    """先行CSVのファイル名から先行列車の出発遅延[秒]を取り出す（例: f_train_delay10_stop60 -> 10.0）。
+    low50 等で遅延指定が無い場合は0.0を返す。"""
+    if not csv_path:
+        return 0.0
+    import re
+    m = re.search(r"delay(\d+)", csv_path)
+    return float(m.group(1)) if m else 0.0
 import random
 import sys
 
@@ -95,18 +120,15 @@ class Actor:
         for var, weight in zip(self.q_network.variables, current_weights):
             var.assign(weight)
 
-        # ▼【変更】遅延バリエーションを削り、遅延0のファイルのみを使用
-        f_train_csv_list = [
-            "input/f_train_low50.csv",
-            "input/f_train_delay0_stop30.csv",
-            "input/f_train_delay0_stop45.csv",
-            "input/f_train_delay0_stop60.csv"
-        ]
+        # ▼【変更 2026-07-23】先行遅延シナリオ（delay5/10）を含む全10種を使用し、
+        #   駅間停車防止モードの塞ぎ状況を学習させる。
+        f_train_csv_list = ALL_F_TRAIN_CSVS
 
         r = random.random()
         ego_delay = random.uniform(0.0, 20.0)  # 自列車の遅延
-        headway = random.uniform(30.0, 120.0)  # ▼【追加】先行列車との出発間隔(30~120秒)
-        
+        # ▼【変更 2026-07-23】headway範囲を20~120秒に拡張（20秒付近で強い塞ぎ＝機外停車寸前を作る）
+        headway = random.uniform(20.0, 120.0)
+
         if (r < 0.4):
             # 先行列車なし
             self.state = self.env.reset(11, ego_delay, 1.0)
@@ -357,15 +379,12 @@ class Tester:
         for delay in [5.0, 10.0, 15.0]:
             test_cases.append({"delay": delay, "f_train_csv": None, "headway": None, "desc": f"Sim2_Delay_{delay}s"})
             
-        f_train_csvs = [
-            "input/f_train_low50.csv",
-            "input/f_train_delay0_stop30.csv",
-            "input/f_train_delay0_stop45.csv",
-            "input/f_train_delay0_stop60.csv"
-        ]
-        
+        # ▼【変更 2026-07-23】先行遅延シナリオを含む全10種 × 代表headway(30/60/90秒)で検証。
+        #   小headwayほど先行に塞がれ、駅間停車防止モードの挙動を確認できる。
+        f_train_csvs = ALL_F_TRAIN_CSVS
+
         for csv_path in f_train_csvs:
-            for hw in [30.0, 60.0, 120.0]:
+            for hw in [30.0, 60.0, 90.0]:
                 csv_name = csv_path.split("/")[-1].replace(".csv", "")
                 test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "desc": f"Sim3_HW{int(hw)}_{csv_name}"})
 
@@ -377,6 +396,9 @@ class Tester:
         
         for tc in test_cases:
             state = env.reset(11, tc["delay"], 1.0, fowerd_train_time_offset=tc["headway"], fowerd_train_controls=tc["f_train_csv"])
+            # 駅間停車防止モード用の先行スナップショット（エピソード定数）
+            forward_train_delay_val = parse_forward_train_delay(tc["f_train_csv"])
+            standard_headway_val = tc["headway"] if tc["headway"] is not None else 0.0
             speeds = []
             positions = []
             times = []
@@ -433,7 +455,11 @@ class Tester:
                 "prev_notch", "prev_notch_duration", "speed_limit", "signal_speed",
                 "current_speed", "required_speed", "dist_to_next_station", "time_to_next_station",
                 "req_stop_dist", "delay", "current_gradient", "next_limit_info",
-                "next_gradient_info", "forward_info", "backward_info", "reward"
+                "next_gradient_info", "forward_info", "backward_info",
+                # ▼【追加 2026-07-23】駅間停車防止モード用の先行スナップショット（評価プロンプトの入力）
+                "forward_train_delay", "forward_clear_remaining_time", "forward_departed_next",
+                "standard_headway", "target_speed_no_stop",
+                "reward"
             ]
             llm_writer.writerow(llm_header)
             # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
@@ -484,7 +510,11 @@ class Tester:
                     forward_info_str = f"前方{fw_dist:.1f}m先を{fw_speed:.1f}km/h"
                 else:
                     forward_info_str = "先行列車なし"
-                    
+
+                # 先行クリア残時間・発車済みフラグ（ステップ実行前の現在値）を取得
+                forward_clear_remaining = env.forward_clear_remaining_time
+                forward_departed_next_str = env.forward_departed_next
+
                 # =================================================================
                 # ▼▼▼ 行動を環境に反映（ステップ実行）▼▼▼
                 # =================================================================
@@ -550,6 +580,16 @@ class Tester:
                     speed_limit=speed_limit,
                     current_gradient=current_gradient,
                 )
+                # 機外停車を避ける加速上限（駅間停車防止モードの基準速度）。
+                # 先行クリア残時間0（先行なし・クリア済み）なら required_speed に縮退する。
+                target_speed_no_stop = calculate_no_stop_target_speed(
+                    current_speed=current_speed,
+                    dist_to_next_station=dist_to_next_station,
+                    time_to_next_station=time_to_next_station,
+                    forward_clear_remaining_time=forward_clear_remaining,
+                    speed_limit=speed_limit,
+                    current_gradient=current_gradient,
+                )
                 # =================================================================
 
                 tri_drive_info = getattr(env, 'latest_rewards_info', [])
@@ -579,6 +619,11 @@ class Tester:
                     next_gradient_info_str,
                     forward_info_str,
                     backward_info_str,
+                    round(forward_train_delay_val, 1),
+                    round(forward_clear_remaining, 1),
+                    forward_departed_next_str,
+                    round(standard_headway_val, 1),
+                    round(target_speed_no_stop, 1),
                     reward
                 ]
                 llm_writer.writerow(llm_row)
