@@ -5,8 +5,9 @@ import random
 import pandas as pd
 import codecs
 import math
+import re
 
-from required_speed import calculate_required_speed, brake_stop_distance_m
+from required_speed import calculate_required_speed, brake_stop_distance_m, calculate_no_stop_target_speed
 
 # 単一評価値予測器をインポート
 try:
@@ -38,7 +39,7 @@ class Environment:
         # 分析・CSV記録用の変数
         self.last_llm_reward = 0.0
 
-    def reset(self, departure_index=None, delay=0.0, weight_correction=1.0, fowerd_train_time_offset=None, start_position_offset=0.0, fowerd_train_controls=None):
+    def reset(self, departure_index=None, delay=0.0, weight_correction=1.0, fowerd_train_time_offset=None, start_position_offset=0.0, fowerd_train_controls=None, forward_train_delay=None):
         if departure_index is None:
             departure_index = random.randrange(1)
         self.t = 0.0
@@ -53,6 +54,16 @@ class Environment:
         # 先行列車が自列車の次駅(arrival_station)を発車するCSV時刻[s]（エピソード定数、先行なし時None）。
         # 駅間停車防止モードの「先行クリア残時間」算出に用いる。
         self.forward_depart_time = None
+        # 先行列車の出発遅延[秒]。明示指定(forward_train_delay)があればそれを優先し、
+        # 無ければ先行CSVファイル名のdelayN から取得（先行なし/該当なしは0）。
+        # ※Testerは「先行遅延=120−headway」を明示指定する（headway換算モデル）。
+        if forward_train_delay is not None:
+            self.forward_train_delay = float(forward_train_delay)
+        elif fowerd_train_controls:
+            _m = re.search(r"delay(\d+)", str(fowerd_train_controls))
+            self.forward_train_delay = float(_m.group(1)) if _m else 0.0
+        else:
+            self.forward_train_delay = 0.0
 
         if (fowerd_train_controls):
             ftc = self.read_csv(fowerd_train_controls)
@@ -206,6 +217,20 @@ class Environment:
             )
             # ▲▲▲ 追加ここまで ▲▲▲
 
+            # ▼▼▼ 追加: 機外停車回避の加速上限（駅間停車防止モードの基準速度・target_speed_no_stop）▼▼▼
+            #   evaluate_csv_with_llm.py / apex2.py Tester と同一ロジック（required_speed.py）。
+            #   先行クリア残時間0（先行なし・クリア済み）なら required_speed に縮退する。
+            clear_remaining_val = self.forward_clear_remaining_time
+            target_speed_no_stop_val = calculate_no_stop_target_speed(
+                current_speed=self.speed,
+                dist_to_next_station=self.station_remaining_distance * 1000.0,
+                time_to_next_station=self.remaining_time,
+                forward_clear_remaining_time=clear_remaining_val,
+                speed_limit=self.current_speed_limit,
+                current_gradient=current_gradient_val,
+            )
+            # ▲▲▲ 追加ここまで ▲▲▲
+
             # ▼▼▼ 【重要修正】'signal_speed' を追加して報酬予測側へ渡す ▼▼▼
             state_info = {
                 'speed_limit': self.current_speed_limit,
@@ -226,7 +251,13 @@ class Environment:
                 'next_limit_info': self._get_next_limit_info(),
                 'next_gradient_info': self._get_next_gradient_info(),
                 'forward_info': forward_info_str,
-                'backward_info': "後続列車なし"
+                'backward_info': "後続列車なし",
+                # ▼ 先行スナップショット（駅間停車防止モード用・モードNN/評価NN入力）
+                'target_speed_no_stop': target_speed_no_stop_val,
+                'forward_clear_remaining_time': clear_remaining_val,
+                'forward_departed_next': self.forward_departed_next,
+                'forward_train_delay': self.forward_train_delay,
+                'standard_headway': self.fowerd_train_time_offset if self.fowerd_train_time_offset is not None else 0.0,
             }
             try:
                 llm_reward = self.reward_predictor.predict_reward(state_info)

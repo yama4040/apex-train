@@ -56,6 +56,42 @@ def parse_forward_train_delay(csv_path):
     import re
     m = re.search(r"delay(\d+)", csv_path)
     return float(m.group(1)) if m else 0.0
+
+
+# 運転モード→運転曲線の色（PNGでモード切替を視認するため）。
+#   通常=赤 / 遅延回復=緑 / 機外停車防止(駅間停車防止)=オレンジ / 運転間隔調整=紫
+MODE_COLORS = {"normal": "red", "delay_recovery": "green", "anti_mid_stop": "orange", "spacing": "purple"}
+MODE_LABELS = {"normal": "Normal", "delay_recovery": "DelayRecovery",
+               "anti_mid_stop": "AntiMidStop", "spacing": "Spacing"}
+
+
+def plot_curve_by_mode(ax_plot, x, y, modes):
+    """運転曲線をモード別に色分けして描画する。x,y,modes は同一長（各点＝各ステップ）。
+    連続する同一モードの点をまとめて1本の線として描き（描画効率化）、
+    モードごとに凡例ラベルを1度だけ付ける。ax_plot は plt.plot（または Axes.plot）を想定。"""
+    n = min(len(x), len(y), len(modes))
+    if n == 0:
+        return
+
+    def norm(k):
+        return k if k in MODE_COLORS else "normal"
+
+    seen = set()
+    i = 0
+    while i < n - 1:
+        m = norm(modes[i])
+        j = i
+        while j < n - 1 and norm(modes[j]) == m:
+            j += 1
+        lbl = None
+        if m not in seen:
+            seen.add(m)
+            lbl = f"Own Train ({MODE_LABELS.get(m, m)})"
+        # 点 i..j を1本で描画。次の区間は点jを共有して連結する。
+        ax_plot(x[i:j + 1], y[i:j + 1], color=MODE_COLORS[m], lw=1.3, label=lbl)
+        i = j
+
+
 import random
 import sys
 
@@ -373,20 +409,25 @@ class Tester:
         os.makedirs(llm_dir, exist_ok=True)
         # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-        # テストケースの再構築
+        # ▼【変更 2026-07-26】テストパターン再定義。
+        #   ・通常（遅延なし・先行なし）
+        #   ・先行なし × 自列車遅延[15,30,60]
+        #   ・先行あり × 先行遅延[0,30,60,90] × 次駅停車[30,45,60]、自列車遅延なし。
+        #     先行遅延は「羽前成田の標準出発間隔120秒」から headway = 120 − 先行遅延 に換算し、
+        #     通常走行の先行CSV（delay0_stop{M}）を流用する（新CSV不要・headway換算モデル）。
         test_cases = []
-        test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "desc": "Sim1_Normal"})
-        for delay in [5.0, 10.0, 15.0]:
-            test_cases.append({"delay": delay, "f_train_csv": None, "headway": None, "desc": f"Sim2_Delay_{delay}s"})
-            
-        # ▼【変更 2026-07-23】先行遅延シナリオを含む全10種 × 代表headway(30/60/90秒)で検証。
-        #   小headwayほど先行に塞がれ、駅間停車防止モードの挙動を確認できる。
-        f_train_csvs = ALL_F_TRAIN_CSVS
+        test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "forward_delay": 0.0, "desc": "Sim1_Normal"})
+        for ego in [15.0, 30.0, 60.0]:
+            test_cases.append({"delay": ego, "f_train_csv": None, "headway": None, "forward_delay": 0.0,
+                               "desc": f"Sim2_EgoDelay{int(ego)}s"})
 
-        for csv_path in f_train_csvs:
-            for hw in [30.0, 60.0, 90.0]:
-                csv_name = csv_path.split("/")[-1].replace(".csv", "")
-                test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "desc": f"Sim3_HW{int(hw)}_{csv_name}"})
+        STD_DEPARTURE_INTERVAL = 120.0  # 羽前成田の標準列車出発間隔[秒]
+        for f_delay in [0.0, 30.0, 60.0, 90.0]:
+            hw = STD_DEPARTURE_INTERVAL - f_delay  # 先行遅延ぶんheadwayが縮む
+            for stop in [30, 45, 60]:
+                csv_path = f"input/f_train_delay0_stop{stop}.csv"
+                test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "forward_delay": f_delay,
+                                   "desc": f"Sim3_Fdelay{int(f_delay)}_stop{stop}_hw{int(hw)}"})
 
         full_reward = 0
         tc0_cumulative_reward = 0 
@@ -395,9 +436,11 @@ class Tester:
         env = self.env
         
         for tc in test_cases:
-            state = env.reset(11, tc["delay"], 1.0, fowerd_train_time_offset=tc["headway"], fowerd_train_controls=tc["f_train_csv"])
+            state = env.reset(11, tc["delay"], 1.0, fowerd_train_time_offset=tc["headway"],
+                              fowerd_train_controls=tc["f_train_csv"], forward_train_delay=tc.get("forward_delay"))
             # 駅間停車防止モード用の先行スナップショット（エピソード定数）
-            forward_train_delay_val = parse_forward_train_delay(tc["f_train_csv"])
+            # headway換算モデル: 先行遅延 = tc["forward_delay"]（= 120 − headway）
+            forward_train_delay_val = tc.get("forward_delay", 0.0)
             standard_headway_val = tc["headway"] if tc["headway"] is not None else 0.0
             speeds = []
             positions = []
@@ -405,6 +448,7 @@ class Tester:
             f_speeds = []
             f_positions = []
             f_times = []
+            modes = []  # 各ステップの運転モード（モード別配色用）
             
             done = False
             plt.figure(dpi=200, figsize=(10, 10))
@@ -519,7 +563,11 @@ class Tester:
                 # ▼▼▼ 行動を環境に反映（ステップ実行）▼▼▼
                 # =================================================================
                 next_state, reward, done = env.step(action)
-                
+
+                # 運転モードの記録（環境の報酬予測器が推論した last_mode。位置/速度の各点と対応）
+                _rp = getattr(env, 'reward_predictor', None)
+                modes.append(getattr(_rp, 'last_mode', 'normal') if _rp is not None else 'normal')
+
                 # =================================================================
                 # 2. ノッチ情報とフェーズの取得（ステップ実行「後」に取るべき情報）
                 # ※ env.step() 後に確実に更新されたプロパティを参照する
@@ -640,7 +688,7 @@ class Tester:
             f_llm.close() # ▼▼▼【追加】LLM評価用CSVのクローズ ▼▼▼
             
             # 1枚目: 位置-速度グラフ
-            plt.plot(positions, speeds, "r-", label="Own Train")
+            plot_curve_by_mode(plt.plot, positions, speeds, modes)
             if len(f_positions) > 0:
                 plt.plot(f_positions, f_speeds, "b--", label="Forward Train")
             plt.legend(loc="upper right")
@@ -657,7 +705,7 @@ class Tester:
             plt.axhline(y=hakuto_pos, color='g', linestyle='--', lw=2, label="Hakuto")
             plt.axhline(y=env.arrival_station["position"], color='k', linestyle='-', lw=2, label="Target")
             
-            plt.plot(times, positions, "r-", label="Own Train")
+            plot_curve_by_mode(plt.plot, times, positions, modes)
             
             if len(f_positions) > 0:
                 plt.plot(f_times, f_positions, "b--", label="Forward Train")

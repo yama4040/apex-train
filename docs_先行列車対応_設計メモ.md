@@ -294,6 +294,104 @@ Step10 総合評価
 ### 次段（②以降）
 - 3PCで `evaluate_csv_with_llm.py` を各ファイルに実行（1行約25秒＝1ファイル約8時間）→ mode付き評価済みデータを得る。
 - 先行なし24,100行と統合 → 二重蒸留（モードNN＋評価NN50次元・マニフェスト方式）。anti_mid_stopクラスは相対的に少数（塞ぎ約1500行）のためクラス重み付け要検討。
+
+## 9. 二重蒸留NNの構築（完了 2026-07-25）
+
+LLM評価済みデータ（計27,675行: normal 25,958 / anti_mid_stop 1,493 / delay_recovery 224）から2つのNNを蒸留。
+
+### 共有モジュール化（設計メモ§3⑥マニフェスト方式の本命）
+- **`reward_features.py`（新規）**: 特徴量エンジニアリングを1モジュールに集約し学習・推論で共有（従来の二重管理による不一致を解消）。状態特徴量 **52次元**（旧46＋先行スナップショット6: `target_speed_no_stop` / `speed_margin_to_target`(=cur−target・採点の要) / `forward_clear_remaining_time` / `forward_train_delay` / `forward_departed_flag` / `standard_headway`）。`MODE_CLASSES`=4次元one-hot（spacing予約）、実学習は3クラス。
+
+### モードNN（`train_mode_network.py` 新規）
+- 状態52次元 → 3クラスsoftmax。balancedクラス重み（normal 0.36 / delay_recovery 41.2 / anti_mid_stop 6.2）。
+- 成果物: `mode_model.h5` / `mode_scaler.pkl` / `mode_manifest.json`。
+- **結果（テスト5,535行）**: accuracy 0.99・macro-F1 0.97。anti_mid_stop recall 0.98/precision 0.92、delay_recovery recall 1.00。混同行列で誤りは境界の少数のみ。
+
+### 評価NN（`train_reward_network2.py` 改修）
+- 入力 = [正規化状態52 | mode one-hot 4] = **56次元**。既存の2段構成（ゲート分類器＋回帰器）維持。学習時はLLMのmodeラベルでteacher forcing。スケーラは状態52次元でfit、one-hotは正規化後に付加。
+- 成果物: `direct_reward_model2.h5` / `direct_reward_gate2.h5` / `direct_reward_scaler2.pkl` / `direct_reward_manifest.json`。
+- **結果**: 合成モデル テストMAE 0.0804、報酬リーク3.0%（0.0ラベルの平均予測0.026）、非0.0ラベルMAE 0.110。
+
+### 推論・環境統合
+- **`direct_reward_predictor2.py`（改修）**: 2段推論（状態→モードNN argmax→mode one-hot→[状態|one-hot]→評価NN）。共有モジュール使用。`last_mode`で判定モードを保持。モデル/モードNN欠損時は後方互換（0.0/normal固定）。
+- **`environment2.py`（改修）**: state_infoに先行スナップショット5項目を追加（`target_speed_no_stop`はcalculate_no_stop_target_speedで算出、`forward_train_delay`は先行CSVファイル名から取得）。
+- **エンドツーエンド検証**: 先行なし→normal/報酬1.0、塞ぎ上限内加速→anti_mid_stop/0.8、塞ぎ過剰加速→anti_mid_stop/0.2、塞ぎ上限付近惰行→anti_mid_stop/0.7。environment2経由でも過剰加速時にスケール後報酬が負まで低下しLLM挙動を再現。
+
+### 学習曲線（それぞれ出力・2026-07-25）
+- モード分類器: `train_mode_network.py` → `learning_curve_mode.png`（loss＋accuracy）。
+- 評価回帰器: `train_reward_network2.py` → `learning_curve_direct.png`（Huber loss＋MAE、既存）。
+
+### 分析ツール改修（`analyze_reward_nn_vs_llm.py`・2026-07-25）
+二重蒸留に対応。`main()`＝新しい`run_distillation_analysis`（旧回帰/分類の比較は`main_legacy`に退避、新回帰NNの旧経路は56次元と不整合のため無効化）。
+- **① モード分類の正しさ**: モードNN予測 vs LLMモードラベルの混同行列・分類レポート（`mode_nn_confusion.png`）。実測: accuracy 0.99、anti_mid_stop recall 0.99/precision 0.92。
+- **② モード別の評価模倣**: 評価NN出力 vs LLMラベルをモード別MAEで集計。**教師強制（LLMモード入力）と完全パイプライン（モードNN→評価NN）の両方**を出力しカスケード影響を可視化。実測: MAE normal 0.067 / delay_recovery 0.077 / anti_mid_stop 0.098、カスケード影響 平均0.0002（モードNN高精度のため報酬にほぼ波及せず）。モード別ヒートマップ（`evalnn_heatmap_mode_*.png`）・分布比較・グループ別誤差・ルールベース検証も出力。
+
+### 残・波及
+- QNetwork（25次元）へのmode入力は未追加（§3⑥「まず入れずに始め、学習が遅ければ追加」の方針）。次段はapex2.pyでのDQN学習（mode対応報酬関数を使用）。
+
+## 10. 不足部分の追加データ生成（2026-07-25・DQN学習中に空きPC2台で評価予定）
+
+現行データセットの手薄領域を分析（anti_mid_stop 1,493 / delay_recovery 224 / 機外停車待機22）し、ギャップを狙った2ファイルを生成（各≤700行）。生成器はscratchpad `gen_eval_gap.py`（CPU限定でDQN学習と非競合）。
+- **不足の特定**: anti_mid_stopの中間報酬帯0.4〜0.7が計29行のみ（MAE 0.098の主因）／機外停車待機22行のみ／delay_recovery薄い。
+- **File A（`評価用csv_先行あり_gap_20260725/PC_A/`・344行）**: 中間報酬帯 anti_mid_stop。中程度の塞ぎ×hover_over方策（上限+5〜8km/h）で、塞ぎ中(未発車)で上限を中程度超える巡航行に絞り込み。中程度超過(tgt+3〜12) **215行**を確保。
+- **File B（`.../PC_B/`・490行）**: 機外停車待機（強い塞ぎ×cbtc_follow方策で先行50m手前停止・低速行優先で17行）＋ delay_recovery（非塞ぎ大headway×ego遅延30-50×over_drive方策で132行）。
+- 評価は空き2PCで `python evaluate_csv_with_llm.py 評価用csv_先行あり_gap_20260725/PC_A 評価済ログ_gapA`（PC_Bも同様）。評価後、既存データセットへ統合し二重蒸留を再学習してMAE改善を確認する。
+
+### 追加3ファイル（2026-07-26・生成器 scratchpad `gen_eval_more.py`、CPU限定）
+現行の手薄領域をさらに補う3ファイル（各≤500行）。`評価用csv_先行あり_more_20260726/PC1〜3/`。
+- **File1 midrange（190行）**: 中間報酬帯 anti_mid_stop。全行未発車で中程度超過131行（offset刻み4/7/10）。
+- **File2 release（387行）**: 解放transition。先行クリア後の再加速（発車済み×力行）147行＝CLAUDE.md「信号開通後の加速」。cbtc_follow方策。
+- **File3 diverse（358行）**: delay_recovery 50行＋未サンプルheadway(28/45/60/85)での anti_mid_stop 多様性。
+- 評価: 各PCで `python evaluate_csv_with_llm.py 評価用csv_先行あり_more_20260726/PC{1,2,3} 評価済ログ_more{1,2,3}`。
+
+## 11. Testerのテストパターン再定義＋運転曲線のモード別配色（2026-07-26）
+
+### テストパターン再定義（apex2.py Tester、16パターン）
+- 通常（遅延なし・先行なし）／先行なし×自列車遅延[15,30,60]／先行あり×先行遅延[0,30,60,90]×次駅停車[30,45,60]（自列車遅延なし）。
+- **先行遅延はheadway換算モデル**: 羽前成田の標準出発間隔120秒から `headway = 120 − 先行遅延`（0→120, 30→90, 60→60, 90→30）。通常走行の先行CSV `f_train_delay0_stop{30,45,60}` を流用（新CSV不要）。`forward_train_delay = 120 − headway` を `environment2.reset(forward_train_delay=...)` で明示指定（Actorは従来通りファイル名から取得＝影響なし）。Actorは変更せず（Tester のみ）。
+
+### 運転曲線のモード別配色（apex2.py）
+- 各ステップの `env.reward_predictor.last_mode` を記録し、速度-位置図・ダイヤ図の自列車曲線を**モード別に配色**（通常=赤／遅延回復=緑／機外停車防止(anti_mid_stop)=オレンジ／間隔調整=紫）。`plot_curve_by_mode`（連続同一モードをまとめて描画）。凡例にモード別ラベル。
+- 検証済み: 先行あり塞ぎシナリオで anti_mid_stop=オレンジが明瞭に描画、塞がれ後の遅延で delay_recovery=緑も出現。
+
+### 既知の制約（受容・2026-07-26）
+- **先行なし＋自列車遅延（Sim2）は delay_recovery（緑）にならず normal（赤）のまま**。原因: ①`current_delay`は残り時間が正の間は0（標準運転時間超過まで遅延と認識しない）②データ移行で先行なし＋遅延行をすべてmode=normalとしたためモードNNが先行なしのdelay_recoveryを学習していない。delay_recovery（緑）は主に先行ありで塞がれて遅延した後に出現する。将来、遅延回復モードを正式対応（駅出発時遅延の特徴量化＋再ラベル＋モードNN再学習）する際に解消予定。
+
+### 反映タイミング
+- **変更は次回 apex2.py 起動時に反映**。現在学習中のプロセスは旧コード（旧34パターン・単色赤）で動作中。次のrunから新16パターン・モード配色になる。
+
+## 12. DQN失敗の診断と対策データ（2026-07-26）
+
+### 診断（run 20260725230521, cycle 13750）
+強い塞ぎ（ci31: delay10_stop60_hw30）でDQNが失敗：ノッチ反転45回（ノコギリ）・上限超過115行（過剰加速）・先行最接近19.7m（追突）・平均report報酬0.11。
+- **根本原因**: 過剰加速115行のモードは全てanti_mid_stop（判定は正しい）だが、**報酬NNが「上限超過中のブレーキ/惰行」状態に0.8-0.9を出す**（81/115が≥0.7）。ブレーキ＝安全・修正行動として高評価するため、「力行で過剰加速→ブレーキ」のサイクルが報酬的に得になり、かつノッチ保持約8秒でノコギリ判定（7秒閾値）を僅かに回避 → **過剰加速ノコギリの搾取**。
+
+### 対策データ（3ファイル・1フォルダ `評価用csv_対策_20260726/`、生成器 scratchpad `gen_eval_fix.py`）
+失敗領域を密に再ラベルし報酬勾配を鋭くする。強い塞ぎ delay10_stop{45,60}×小headway(25/32/40)で生成。
+- **fix_1_over_accel_power（381行）**: 力行で上限超過（過剰加速の負例）→ 力行過剰加速のpenalty強化。
+- **fix_2_forward_approach（800行）**: 先行接近(40-120m)・CBTC現示超過（機外停車寸前の負例）＝**報酬NNが0.8を出す漏れの核心状態**。LLM再ラベルが「データで直るか／プロンプト修正が要るか」の判定材料。
+- **fix_3_ideal_coast（800行）**: 上限内で滑らかに追随（理想早め惰行の正例）→ 正しい挙動の明確な目標。
+- 評価: `python evaluate_csv_with_llm.py 評価用csv_対策_20260726 評価済ログ_対策`（計1,981行）。評価後、既存データに統合し二重蒸留を再学習。
+- **未解決の懸念**: fix_2 のブレーキ×上限超過状態をLLMも高評価する場合、修正ブレーキを高評価しすぎるプロンプト設計（§6 課題1）が根因となり、プロンプト側の対応（上限超過状態への減点強化 or ノコギリ判定閾値の見直し）が別途必要。
+
+### 対策データ投入・再学習後の分析（2026-07-28）
+評価NNのみ再学習（モードNNは未再学習）。データセット 30,737行（anti_mid_stop 1,493→**3,777**）。ci31過剰加速115行を再診断：
+- **力行で上限超過: 0.8→0.20**（fix_1が奏功・LLMラベルも平均0.16）✅ 過剰加速のpenalty強化に成功。
+- **惰行で上限超過: 0.27**（LLMラベル0.30）✅。
+- **ブレーキで上限超過: 依然0.69**。LLMラベルが**二峰性**（0.0が594行＝危険 / 0.9-1.0が266行＝適切ブレーキ）で回帰器が平均化。
+- **真の残存漏れ = cur>signal+2（CBTC現示超過）なのにブレーキ中で高評価(≥0.7)の72状態**（例: cur38/sig26/先行82m、gate≈0）。
+- **根本原因（データで直らない）**: プロンプトの不整合。即0.0ルールは「signal_speed超過→0.0」だが、CBTCセクションは「ブレーキ中の信号対応」を許容的に扱うため、LLMが cur≫signal のブレーキを0.7前後にラベル。→ **プロンプト修正が必要**: 「cur > signal + 2km/h は notch に関わらず 0.0（危険）、高評価は cur≒signal±2 のブレーキに限る」を明確化し、対策データを再評価。
+- **併せて**: モードNNを増えたデータ（anti_mid_stop 3,777）で再学習推奨。
+
+### プロンプト修正（CBTC現示超過の整合化）＋再学習データ（2026-07-28）
+残存漏れ（cur≫signalのブレーキが0.7）に対し、`evaluate_csv_with_llm.py` のCBTCルールを3箇所整合化：
+- **`current_speed > signal_speed + 2km/h` はノッチに関わらず reward=0.0**（ブレーキ中でも現示超過は危険＝CBTC違反）。高評価は `cur ≒ signal ±2` のブレーキに限る。過剰加速で現示を超えた後のブレーキも0.0（早め惰行で超えないようにすべきだったため）。
+- 修正箇所: 即0.0ルール「signal_speed超過」／CBTCセクション評価ルール／次駅減速フェーズ・先行列車が居る場合。
+- **再学習データ 3ファイル（1フォルダ `評価用csv_CBTC修正_20260728/`、生成器 scratchpad `gen_eval_cbtc.py`）**: 強い塞ぎ delay10_stop{45,60}×小headway(22/28/35)で cur=signal+2 の境界を densely 生成。
+  - `cbtc_1_over_brake`（500行）: ブレーキ×CBTC超過 → 0.0（漏れの核心）
+  - `cbtc_2_over_power_coast`（65行）: 惰行×CBTC超過 → 0.0（力行×超過は物理的に稀で0行）
+  - `cbtc_3_follow_and_coast`（500行）: 追随(cur≒signal±2ブレーキ)250 ＋ 現示下の早め惰行250 → 高評価
+- 評価: `python evaluate_csv_with_llm.py 評価用csv_CBTC修正_20260728 評価済ログ_CBTC修正`。評価後、既存データへ統合し**評価NN・モードNNを再学習** → ci31のブレーキ×CBTC超過が0.0側に矯正されるか（漏れ解消）を確認。
 - **A-4 スモークテスト**: 数十行の実APIでモード判定品質・軌道沿い安定性・target_speed_no_stop基準の採点挙動を実測。
 
 ### 注意点

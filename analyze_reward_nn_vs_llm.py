@@ -38,6 +38,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import joblib
+from sklearn.metrics import confusion_matrix, classification_report
+
+import reward_features as rf  # 二重蒸留NNの特徴量エンジニアリング共有モジュール
 
 # =====================================================================
 # 特徴量抽出（train_reward_network.py / train_reward_network2.py / train_reward_network3.py と共通）
@@ -717,7 +720,199 @@ def analyze_rule_based_decel_check(df_subset, llm_reward, nn_rounded, label, sav
         print(f"[保存] {path}")
 
 
+# =====================================================================
+# 二重蒸留NN（モードNN＋評価NN）の分析
+#   ① モード分類の正しさ: モードNN予測 vs LLMモードラベル（混同行列・分類レポート）
+#   ② モード別の評価模倣: 評価NN出力 vs LLMラベル（モード別MAE・ヒートマップ）
+#      - 教師強制（LLMモードを評価NNへ）と 完全パイプライン（モードNN→評価NN）の両方を比較し、
+#        モード誤判定のカスケード影響を可視化する。
+# =====================================================================
+
+MODE_MODEL_PATH = "mode_model.h5"
+MODE_SCALER_PATH = "mode_scaler.pkl"
+MANIFEST_PATH = "direct_reward_manifest.json"
+
+
+def load_concat_raw(csv_dir):
+    """全CSVを生ヘッダのまま連結し、mode列を正規化して返す（reward_features用の生df）。"""
+    files = glob.glob(os.path.join(csv_dir, "*.csv"))
+    if not files:
+        raise FileNotFoundError(f"'{csv_dir}' にCSVがありません。")
+    df = pd.concat([pd.read_csv(f, encoding='utf-8-sig') for f in files], ignore_index=True)
+    if 'mode' not in df.columns:
+        df['mode'] = 'normal'
+    df['mode'] = df['mode'].fillna('normal').replace('', 'normal')
+    print(f"合計データ数: {len(df)}行  モード分布: "
+          f"{ {c: int((df['mode'] == c).sum()) for c in rf.MODE_CLASSES if (df['mode'] == c).any()} }")
+    return df
+
+
+def augment_group_columns(df):
+    """既存の誤差集計・ルール検証ヘルパーを再利用するためのgroup_*・先行列車特徴を付与する
+    （load_raw_dataのget_dummiesはphase文字列を壊すため、ここでは文字列列を保持したまま付与）。"""
+    df = df.copy()
+    df['group_phase'] = df['phase'].astype(str)
+    df['group_notch'] = df['current_notch'].astype(str)
+    df['group_mode'] = df['mode'].astype(str)
+    df['group_delay'] = np.where(df['delay'] <= 0.0, "遅延なし",
+                                 np.where(df['delay'] <= 10.0, "遅延10秒以内", "遅延10秒超"))
+    hunting = (df['holding_time'] < 7.0) & (df['prev_notch_duration'] < 7.0) & \
+              (df['current_notch'] != df['prev_notch'].replace('なし（または停止）', 'ブレーキ（減速）中'))
+    df['group_hunting'] = np.where(hunting, "ノコギリ疑いあり", "なし")
+    fwd = df['forward_info'].apply(rf.extract_forward_info).apply(pd.Series)
+    fwd.columns = ['f_exist', 'f_distance', 'f_speed']
+    df = pd.concat([df, fwd], axis=1)
+    df['f_distance'] = df['f_distance'].clip(upper=2000.0)
+    return df
+
+
+def plot_mode_confusion(y_true, y_pred, classes, save_path):
+    """モードNN予測 vs LLMモードラベルの混同行列ヒートマップ（行=正解, 列=予測）。"""
+    n = len(classes)
+    cm = confusion_matrix(y_true, y_pred, labels=list(range(n)))
+    fig, ax = plt.subplots(figsize=(6.5, 5.5))
+    im = ax.imshow(cm, cmap='Blues', origin='upper', aspect='auto')
+    ax.set_xticks(range(n)); ax.set_xticklabels(classes, rotation=20, ha='right')
+    ax.set_yticks(range(n)); ax.set_yticklabels(classes)
+    ax.set_xlabel("Mode NN Prediction"); ax.set_ylabel("LLM Mode Label")
+    ax.set_title("Mode NN vs LLM Mode Label: Confusion Matrix")
+    vmax = cm.max() if cm.max() > 0 else 1
+    for i in range(n):
+        for j in range(n):
+            ax.text(j, i, str(cm[i, j]), ha='center', va='center',
+                    color='white' if cm[i, j] > vmax * 0.5 else 'black', fontsize=10)
+    fig.colorbar(im, ax=ax).set_label("Count")
+    plt.tight_layout(); plt.savefig(save_path, dpi=300); plt.close()
+    print(f"[保存] {save_path}")
+
+
+def _active_idx(mode_series):
+    return mode_series.map(lambda m: rf.MODE_CLASSES_ACTIVE.index(m)
+                           if m in rf.MODE_CLASSES_ACTIVE else 0).values.astype(np.int64)
+
+
+def _onehot_from_active(indices):
+    oh = np.zeros((len(indices), rf.MODE_DIM), dtype=np.float32)
+    oh[np.arange(len(indices)), indices] = 1.0  # ACTIVE index i は MODE_CLASSES[i] と一致
+    return oh
+
+
+def composite_eval_reward(X_state, mode_onehot, reg_model, gate_model, scaler):
+    """評価NNの合成出力（direct_reward_predictor2.pyと同一: ゲートP(0.0)>=0.5→0.0、他は[0.1,1.0]）。"""
+    Xs = scaler.transform(X_state)
+    X = np.hstack([Xs, mode_onehot]).astype(np.float32)
+    reg = reg_model.predict(X, verbose=0).flatten()
+    if gate_model is not None:
+        gate = gate_model.predict(X, verbose=0).flatten()
+        composed = np.where(gate >= 0.5, 0.0, np.clip(reg, 0.1, 1.0))
+    else:
+        composed = np.clip(reg, 0.0, 1.0)
+    return np.round(composed * 10.0) / 10.0
+
+
+def per_mode_mae_table(df, llm_reward, nn_reward, label):
+    """LLMモードラベル別に、評価NN出力とLLMラベルのMAEを集計する。"""
+    tmp = pd.DataFrame({'mode': df['mode'].values,
+                        'abs_error': np.abs(nn_reward - llm_reward)})
+    print(f"\n--- {label}: LLMモード別の評価MAE ---")
+    grp = tmp.groupby('mode')['abs_error'].agg(平均絶対誤差='mean', 件数='count')
+    # モードの並びを固定
+    order = [m for m in rf.MODE_CLASSES_ACTIVE if m in grp.index]
+    print(grp.loc[order].to_string(float_format=lambda x: f"{x:.4f}"))
+    print(f"  （全体MAE={tmp['abs_error'].mean():.4f}）")
+
+
+def run_distillation_analysis(csv_dir, out_dir):
+    """二重蒸留NN（モードNN＋評価NN）の分析を実行する。"""
+    df = load_concat_raw(csv_dir)
+    df = augment_group_columns(df)
+    llm_reward = df['reward'].astype(np.float32).values
+    llm_mode_idx = _active_idx(df['mode'])
+
+    # 状態特徴量（学習と同一の共有モジュール）
+    X_state, state_cols = rf.build_state_matrix(df)
+    print(f"状態特徴量次元: {X_state.shape[1]}")
+
+    # ---- モデルのロード ----
+    reg_model, reg_scaler = load_model_and_scaler(NEW_REGRESSION_MODEL_PATH, NEW_REGRESSION_SCALER_PATH)
+    gate_model = tf.keras.models.load_model(NEW_GATE_MODEL_PATH, compile=False) if os.path.exists(NEW_GATE_MODEL_PATH) else None
+    mode_model, mode_scaler = load_model_and_scaler(MODE_MODEL_PATH, MODE_SCALER_PATH)
+    if reg_model is None:
+        print("[警告] 評価NNが見つからないため分析を中止します。")
+        return
+
+    # ================= ① モード分類の正しさ =================
+    pred_mode_idx = None
+    if mode_model is not None:
+        probs = mode_model.predict(mode_scaler.transform(X_state), verbose=0)
+        pred_mode_idx = np.argmax(probs, axis=1)
+        print("\n===== ① モード分類の正しさ（モードNN vs LLMモードラベル）=====")
+        print("混同行列 (行=LLM正解, 列=モードNN予測):", rf.MODE_CLASSES_ACTIVE)
+        print(confusion_matrix(llm_mode_idx, pred_mode_idx, labels=list(range(len(rf.MODE_CLASSES_ACTIVE)))))
+        print(classification_report(llm_mode_idx, pred_mode_idx,
+                                    labels=list(range(len(rf.MODE_CLASSES_ACTIVE))),
+                                    target_names=rf.MODE_CLASSES_ACTIVE, zero_division=0))
+        plot_mode_confusion(llm_mode_idx, pred_mode_idx, rf.MODE_CLASSES_ACTIVE,
+                            os.path.join(out_dir, "mode_nn_confusion.png"))
+    else:
+        print("[警告] モードNNが見つからないため、モード分類分析はスキップ（LLMモードのみで評価NNを分析）。")
+
+    # ================= ② モード別の評価模倣 =================
+    print("\n===== ② 評価の模倣（評価NN出力 vs LLMラベル）=====")
+
+    # (a) 教師強制: LLMモードを評価NNへ（評価NN単体の模倣精度＝モード誤判定の影響を除いた上限）
+    oh_llm = _onehot_from_active(llm_mode_idx)
+    nn_reward_tf = composite_eval_reward(X_state, oh_llm, reg_model, gate_model, reg_scaler)
+    print("\n[A] 教師強制（LLMモードを入力）: 評価NN単体の模倣精度")
+    per_mode_mae_table(df, llm_reward, nn_reward_tf, "教師強制")
+    plot_confusion_heatmap(llm_reward, nn_reward_tf, "EvalNN (LLM mode)",
+                           os.path.join(out_dir, "evalnn_heatmap_teacherforcing.png"))
+
+    # (b) 完全パイプライン: モードNN→評価NN（RL実行時に実際に得られる報酬。カスケード影響込み）
+    if pred_mode_idx is not None:
+        oh_pred = _onehot_from_active(pd.Series(pred_mode_idx))
+        nn_reward_full = composite_eval_reward(X_state, oh_pred, reg_model, gate_model, reg_scaler)
+        print("\n[B] 完全パイプライン（モードNN→評価NN）: RL実行時に得られる報酬")
+        per_mode_mae_table(df, llm_reward, nn_reward_full, "完全パイプライン")
+        plot_confusion_heatmap(llm_reward, nn_reward_full, "EvalNN (predicted mode)",
+                               os.path.join(out_dir, "evalnn_heatmap_full_pipeline.png"))
+        # カスケード影響: 教師強制との差
+        cascade = np.abs(nn_reward_full - nn_reward_tf)
+        print(f"\n[カスケード影響] 完全パイプラインと教師強制の報酬差: "
+              f"平均{cascade.mean():.4f} / 差>0.1の行 {int((cascade > 0.1).sum())}件 "
+              f"（うちモード誤判定行 {int((pred_mode_idx != llm_mode_idx).sum())}件）")
+        eval_reward_for_group = nn_reward_full
+    else:
+        eval_reward_for_group = nn_reward_tf
+
+    # ---- 分布比較・0.0ラベル時の出力（既存ヘルパー再利用）----
+    plot_full_distribution_comparison(
+        llm_reward, [("EvalNN (pipeline)", eval_reward_for_group, 'tab:green')],
+        save_path=os.path.join(out_dir, "evalnn_vs_llm_distribution.png"))
+
+    # ---- モード別の評価ヒートマップ（anti_mid_stop / normal を個別に）----
+    for mode in rf.MODE_CLASSES_ACTIVE:
+        m = df['mode'].values == mode
+        if m.sum() >= 20:
+            plot_confusion_heatmap(
+                llm_reward[m], eval_reward_for_group[m], f"EvalNN [{mode}]",
+                save_path=os.path.join(out_dir, f"evalnn_heatmap_mode_{mode}.png"))
+
+    # ---- フェーズ・モード別の誤差集計＋誤差大の行の抽出（既存ヘルパー再利用）----
+    analysis_df = analyze_error_by_group(df, llm_reward, eval_reward_for_group, "EvalNN (pipeline)")
+    export_worst_mismatches(analysis_df, "EvalNN (pipeline)",
+                            save_path=os.path.join(out_dir, "mismatch_evalnn.csv"))
+
+    # ---- 次駅減速・駅停車完了フェーズのルールベース検証（既存ヘルパー再利用）----
+    analyze_rule_based_decel_check(df, llm_reward, eval_reward_for_group, "EvalNN")
+
+
 def main():
+    run_distillation_analysis(CSV_DIR, OUTPUT_DIR)
+
+
+def main_legacy():
+    """旧回帰NN・分類NN（別系統）の分布比較分析。旧モデルが存在する場合のみ利用する。"""
     df = load_raw_data(CSV_DIR)
 
     # 旧回帰NN・分類NNは特徴量セットが同一のため同じ行列（X_cls、全行）を共有する
@@ -725,8 +920,10 @@ def main():
     print(f"旧回帰NN/分類NN向け入力特徴量次元数: {X_cls.shape[1]} (全{len(llm_reward_cls)}行)")
 
     old_reg_model, old_reg_scaler = load_model_and_scaler(OLD_REGRESSION_MODEL_PATH, OLD_REGRESSION_SCALER_PATH)
-    new_reg_model, new_reg_scaler = load_model_and_scaler(NEW_REGRESSION_MODEL_PATH, NEW_REGRESSION_SCALER_PATH)
     cls_model, cls_scaler = load_model_and_scaler(CLASSIFICATION_MODEL_PATH, CLASSIFICATION_SCALER_PATH)
+    # 新回帰NN（direct_reward_model2.h5）は56次元（状態52＋mode one-hot4）に更新されたため、
+    # このlegacy経路の旧45/46次元特徴量では評価できない。run_distillation_analysis（main）で分析する。
+    new_reg_model, new_reg_scaler = None, None
 
     # 新回帰NNはrequired_speed列が必要なため、対応する行のみの別行列になる。
     # クリップ済み特徴の世代（43/45/46次元）はスケーラーの期待次元数から自動判別する
