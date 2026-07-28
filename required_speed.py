@@ -207,7 +207,9 @@ def calculate_no_stop_target_speed(current_speed: float, dist_to_next_station: f
 
     Args:
         forward_clear_remaining_time: 先行列車が自列車の次駅を発車するまでの残り秒数。
-            駅標準停車時間は全列車30秒として算出する（呼び出し側で先行軌道から計算）。
+            呼び出し側が先行CSVの実軌道から τ_depart（先行が次駅で停車→再発車する時刻）を求め、
+            τ_depart −（現在時刻＋headway）として算出する。先行の駅停車時間は先行CSVに
+            焼き込まれた実値（例: stop30/45/60 なら30/45/60秒）がそのまま反映される（固定30秒ではない）。
             先行がいない／既にクリアした場合は0以下を渡せばよく、その場合は
             calculate_required_speed（定刻ベース）と同値になる。
 

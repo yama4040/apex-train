@@ -153,6 +153,7 @@ def generate_eval_prompt(features: Dict[str, Any]) -> str:
 　判定の強い根拠となる材料:
 　  - target_speed_no_stop が required_speed より 5km/h以上低い（＝先行が塞いでいるとPython側が算出）
 　  - 先行列車が自列車の次駅を「未発車」、または先行クリア残時間が大きい
+　  - **先行の次駅での観測遅延 > 0（先行が次駅で標準停車30秒を超えて延着停車中と自列車が観測している）**
 　  - 先行列車の遅延が大きく、標準運転間隔に対して先行に追いつく見込みがある
 - 基準速度: target_speed_no_stop（機外停車を避ける加速上限）。評価は後述
 　「# 駅間停車防止モードの評価基準」に従う。
@@ -326,6 +327,17 @@ current_statusのdelta_stopの値を必ずそのまま評価に使用し、LLM�
 「遅延リスク」「ちんたら運転」として減点してはならない。このモードの速度評価の基準は
 required_speed ではなく target_speed_no_stop のみであり、required_speed との比較は用いないこと。
 
+## 先行が次駅で延着停車中（先行の次駅での観測遅延 > 0 の場合）
+自列車が「先行は次駅で標準停車30秒を超えて延着停車している」と観測している局面（observed delay > 0）。
+先行がまだ次駅で停まっており、自列車の前は塞がれ続けている（先行が動き出すまで詰まる）。
+※このとき target_speed_no_stop は「標準30秒で先行が発車した」前提の値（＝required相当に戻る）に
+　なっているため、target_speed_no_stop を根拠に「加速してよい」と判断してはならない。観測遅延を優先すること。
+- 現在の**加速（力行）は不要**である。先行が延着している以上、今加速しても先行に追いつくだけなので減点する。
+  観測遅延が大きい・先行が近いほど強く減点する。
+- 現在の**惰行の継続、または低速維持は高評価**とする（先行の延着に合わせて速度を落として待つ正しい運転）。
+- CBTC現示に沿って減速・停止するのは適切（衝突回避）。先行手前で機外停車して待機する状態は中立0.5（上記参照）。
+- 先行が実際に発車した（観測遅延が0に戻り「発車済み」）ら、駅へ向けた再加速を高評価とする（下記「解放後」）。
+
 ## 加速・巡航フェーズ（速度・余裕がある局面）
 - 現在速度が target_speed_no_stop ＋5km/h 以内（上限付近まで）の加速・維持 → 高評価
 - 現在速度が target_speed_no_stop を ＋5km/h を超えて上回る方向への力行
@@ -492,7 +504,8 @@ Step4の判定結果は "mode"（"normal"／"delay_recovery"／"anti_mid_stop" �
 - 先行列車の遅延: {features['forward_train_delay']:.0f} 秒（正＝先行が遅れている）
 - 先行列車が自列車の次駅を発車済みか: {features['forward_departed_next'] or '不明'}
 - 標準運転間隔（先行が自列車より何秒先に出発したか）: {features['standard_headway']:.0f} 秒
-- 先行クリア残時間（先行が自列車の次駅を発車するまでの残り秒数、算出済み）: {features['forward_clear_remaining_time']:.0f} 秒
+- 先行クリア残時間（先行が自列車の次駅を発車するまでの残り秒数、算出済み・因果的）: {features['forward_clear_remaining_time']:.0f} 秒
+- 先行の次駅での観測遅延（標準停車30秒を超えて停車中の秒数。0なら標準どおり／未観測。この値が正なら「先行が次駅で延着中」と自列車が観測している）: {features['forward_observed_delay']:.0f} 秒
 - 機外停車を避ける加速上限（target_speed_no_stop、算出済み。駅間停車防止モードでの惰行/加速の基準速度）: {features['target_speed_no_stop']:.1f} km/h
 """
     output_format = """
@@ -547,7 +560,7 @@ def process_csv_files(input_dir="評価用csv", output_dir="評価済ログ"):
         "forward_info", "backward_info",
         # ▼ 先行スナップショット＋加速上限（駅間停車防止モード用・二重蒸留の入力/ラベル）
         "forward_train_delay", "forward_clear_remaining_time", "forward_departed_next",
-        "standard_headway", "target_speed_no_stop", "mode",
+        "standard_headway", "target_speed_no_stop", "forward_observed_delay", "mode",
         "reward", "reason"
     ]
 
@@ -598,6 +611,8 @@ def process_csv_files(input_dir="評価用csv", output_dir="評価済ログ"):
                     "forward_clear_remaining_time": float(row.get("forward_clear_remaining_time", 0.0) or 0.0),
                     "forward_departed_next": row.get("forward_departed_next", ""),
                     "standard_headway": float(row.get("standard_headway", 0.0) or 0.0),
+                    # 先行の次駅観測遅延[秒]（標準30秒超の停車。因果的・§13）
+                    "forward_observed_delay": float(row.get("forward_observed_delay", 0.0) or 0.0),
                 }
 
                 # 【重要】旧CSVのreq_stop_dist列は「減速度2.5km/h/s一定＋空走1秒」の簡易モデルで
@@ -650,7 +665,8 @@ def process_csv_files(input_dir="評価用csv", output_dir="評価済ログ"):
                     round(features["forward_clear_remaining_time"], 1),
                     features["forward_departed_next"],
                     round(features["standard_headway"], 1),
-                    round(features["target_speed_no_stop"], 1), mode,
+                    round(features["target_speed_no_stop"], 1),
+                    round(features["forward_observed_delay"], 1), mode,
                     reward, reason
                 ]
 

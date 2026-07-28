@@ -114,6 +114,8 @@ STATE_FEATURE_COLS = [
     # ▼ 先行スナップショット（駅間停車防止モード対応・2026-07-25追加）
     'target_speed_no_stop', 'speed_margin_to_target', 'forward_clear_remaining_time',
     'forward_train_delay', 'forward_departed_flag', 'standard_headway',
+    # ▼ 先行の次駅での観測遅延（標準30秒超の停車・因果的・2026-07-28追加。設計メモ §13）
+    'forward_observed_delay',
     # ▼ フェーズ・ノッチのone-hot
     'phase_駅出発直後の加速フェーズ（20秒以内）',
     'phase_巡航フェーズ（駅間走行中）',
@@ -198,6 +200,7 @@ def engineer_features(raw):
     departed = _s(raw, 'forward_departed_next')
     forward_departed_flag = 1.0 if departed == "発車済み" else 0.0
     headway = _f(raw, 'standard_headway', 0.0)
+    observed_delay = _f(raw, 'forward_observed_delay', 0.0)  # 先行の次駅観測遅延[秒]（因果的）
 
     return {
         'hold_coast': holding_clip * is_coast,
@@ -233,6 +236,7 @@ def engineer_features(raw):
         'forward_train_delay': fwd_delay,
         'forward_departed_flag': forward_departed_flag,
         'standard_headway': headway,
+        'forward_observed_delay': observed_delay,
         'phase_駅出発直後の加速フェーズ（20秒以内）': 1.0 if phase == "駅出発直後の加速フェーズ（20秒以内）" else 0.0,
         'phase_巡航フェーズ（駅間走行中）': 1.0 if phase == "巡航フェーズ（駅間走行中）" else 0.0,
         'phase_制限速度区間に接近中（500m以内に制限区間在り）': 1.0 if phase == "制限速度区間に接近中（500m以内に制限区間在り）" else 0.0,

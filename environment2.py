@@ -9,6 +9,12 @@ import re
 
 from required_speed import calculate_required_speed, brake_stop_distance_m, calculate_no_stop_target_speed
 
+# 駅での標準停車時間[秒]。自列車は先行の次駅停車をこの標準値と仮定して先行クリア残時間を見積もる。
+# これを超える停車（延着）は「観測されるまで」知らない＝未来リークを防ぐ（設計メモ §13）。
+# 標準を超えた延着は forward_observed_delay（観測遅延）として表現し、加速不要の判断はプロンプト側の
+# 観測遅延ルールに委ねる（B案・sentinelは撤廃）。
+STANDARD_DWELL_S = 30.0
+
 # 単一評価値予測器をインポート
 try:
     from direct_reward_predictor2 import DirectRewardPredictor
@@ -51,8 +57,10 @@ class Environment:
         self._last_speed_limit = max(self.train.current_speed_limit, 1.0)
         self.fowerd_train = None
         self.fowerd_train_time_offset = fowerd_train_time_offset  # 追加
-        # 先行列車が自列車の次駅(arrival_station)を発車するCSV時刻[s]（エピソード定数、先行なし時None）。
-        # 駅間停車防止モードの「先行クリア残時間」算出に用いる。
+        # 先行列車が自列車の次駅(arrival_station)に到着/発車するCSV時刻[s]（エピソード定数、先行なし時None）。
+        # forward_arrive_time＝到着（先行運動から予測可能・観測情報）、forward_depart_time＝実発車（将来モード用）。
+        # 因果的な先行クリア残時間は「到着＋標準30秒」で見積もり、延着は観測されるまで反映しない（設計メモ §13）。
+        self.forward_arrive_time = None
         self.forward_depart_time = None
         # 先行列車の出発遅延[秒]。明示指定(forward_train_delay)があればそれを優先し、
         # 無ければ先行CSVファイル名のdelayN から取得（先行なし/該当なしは0）。
@@ -89,7 +97,8 @@ class Environment:
                     self.fowerd_train_controls[start_idx]["speed"],
                     1.0
                 )
-                # 先行が次駅を発車するCSV時刻を1度だけ算出（エピソード定数）
+                # 先行が次駅に到着/発車するCSV時刻を1度だけ算出（エピソード定数）
+                self.forward_arrive_time = self._compute_forward_arrive_time()
                 self.forward_depart_time = self._compute_forward_depart_time()
             else:
                 self.fowerd_train = None
@@ -258,6 +267,8 @@ class Environment:
                 'forward_departed_next': self.forward_departed_next,
                 'forward_train_delay': self.forward_train_delay,
                 'standard_headway': self.fowerd_train_time_offset if self.fowerd_train_time_offset is not None else 0.0,
+                # ▼ 先行の次駅での観測遅延[秒]（標準30秒を超えて停車中＝観測されて初めて分かる延着。§13）
+                'forward_observed_delay': self.forward_observed_delay,
             }
             try:
                 llm_reward = self.reward_predictor.predict_reward(state_info)
@@ -631,10 +642,23 @@ class Environment:
         if (self.fowerd_train_position is None): return self.station_remaining_distance
         return self.fowerd_train_position - self.position
 
+    def _compute_forward_arrive_time(self):
+        """先行列車が自列車の次駅(arrival_station)に到着（停車開始）するCSV時刻[s]を返す。
+        先行がその駅で停車しない/該当なしの場合はNone。因果的な先行クリア残時間の起点。
+        （先行の到着は巡航中の運動から予測可能＝観測情報とみなす。延着は含まない。）"""
+        ctr = getattr(self, 'fowerd_train_controls', None)
+        if not ctr:
+            return None
+        P = self.arrival_station["position"]
+        for c in ctr:
+            if abs(c["position"] - P) < 0.05 and c["speed"] < 0.5:
+                return float(c["time"])
+        return None
+
     def _compute_forward_depart_time(self):
-        """先行列車が自列車の次駅(arrival_station)を発車するCSV時刻[s]を返す。
+        """先行列車が自列車の次駅(arrival_station)を発車する実CSV時刻[s]を返す。
         先行がその駅で停車してから再発車する時刻。停車しない/該当なしの場合はNone。
-        駅間停車防止モードの「先行クリア残時間」算出に用いる（駅停車時間は先行CSVに織り込み済み）。"""
+        ※実発車時刻（延着を含む）。因果的なクリア残時間には使わず、発車済み判定と将来モード用。"""
         ctr = getattr(self, 'fowerd_train_controls', None)
         if not ctr:
             return None
@@ -650,22 +674,44 @@ class Environment:
         return None
 
     @property
-    def forward_clear_remaining_time(self):
-        """先行列車が自列車の次駅を発車するまでの残り秒数[s]（走行中の現在値、0以上）。
-        先行なし／既に発車済み／該当なしの場合は0を返す（＝target_speed_no_stopが通常のrequired_speedに縮退）。"""
-        if self.fowerd_train is None or self.forward_depart_time is None:
-            return 0.0
+    def _forward_csv_time(self):
+        """現在の自列車時刻に対応する先行のCSV時刻[s]（= t + headway）。"""
         offset = self.fowerd_train_time_offset if self.fowerd_train_time_offset is not None else 0.0
-        return max(0.0, self.forward_depart_time - (self.t + offset))
+        return self.t + offset
+
+    @property
+    def forward_clear_remaining_time(self):
+        """先行列車が自列車の次駅を発車するまでの残り秒数[s]（因果的・観測情報のみ・0以上）。
+        設計メモ §13（B案）:
+          - 先行が次駅到着前/標準停車30秒以内 → 「到着＋標準30秒」で見積もる（延着は先取りしない）
+          - 標準30秒を超えた延着は forward_observed_delay 側で表現し、ここでは0
+            （target_speed_no_stop は required_speed に戻り、加速不要の判断は観測遅延ルールに委ねる）
+        先行なし／次駅で停車しない場合は0。"""
+        if self.fowerd_train is None or self.forward_arrive_time is None:
+            return 0.0
+        std_depart = self.forward_arrive_time + STANDARD_DWELL_S
+        return max(0.0, std_depart - self._forward_csv_time)
+
+    @property
+    def forward_observed_delay(self):
+        """先行が次駅で標準停車(30秒)を超えて停車している観測遅延[秒]（0以上）。
+        先行がまだ到着していない/標準以内/既に発車済みなら0。相談3-A: プロンプト・NNへ明示的に渡す観測情報。"""
+        if self.fowerd_train is None or self.forward_arrive_time is None:
+            return 0.0
+        f_tau = self._forward_csv_time
+        if self.forward_depart_time is not None and f_tau >= self.forward_depart_time:
+            return 0.0
+        if f_tau < self.forward_arrive_time:
+            return 0.0
+        return max(0.0, f_tau - (self.forward_arrive_time + STANDARD_DWELL_S))
 
     @property
     def forward_departed_next(self):
-        """先行列車が自列車の次駅を発車済みかを表す文字列（プロンプト表示用）。
+        """先行列車が自列車の次駅を発車済みかを表す文字列（プロンプト表示用・観測ベースの実発車）。
         先行なしは空文字、未算出時も空文字。"""
         if self.fowerd_train is None or self.forward_depart_time is None:
             return ""
-        offset = self.fowerd_train_time_offset if self.fowerd_train_time_offset is not None else 0.0
-        return "発車済み" if (self.t + offset) >= self.forward_depart_time else "未発車"
+        return "発車済み" if self._forward_csv_time >= self.forward_depart_time else "未発車"
 
 
     @property

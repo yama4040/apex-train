@@ -502,7 +502,7 @@ class Tester:
                 "next_gradient_info", "forward_info", "backward_info",
                 # ▼【追加 2026-07-23】駅間停車防止モード用の先行スナップショット（評価プロンプトの入力）
                 "forward_train_delay", "forward_clear_remaining_time", "forward_departed_next",
-                "standard_headway", "target_speed_no_stop",
+                "standard_headway", "target_speed_no_stop", "forward_observed_delay",
                 "reward"
             ]
             llm_writer.writerow(llm_header)
@@ -555,9 +555,10 @@ class Tester:
                 else:
                     forward_info_str = "先行列車なし"
 
-                # 先行クリア残時間・発車済みフラグ（ステップ実行前の現在値）を取得
+                # 先行クリア残時間・発車済みフラグ・観測遅延（ステップ実行前の現在値）を取得
                 forward_clear_remaining = env.forward_clear_remaining_time
                 forward_departed_next_str = env.forward_departed_next
+                forward_observed_delay_val = env.forward_observed_delay
 
                 # =================================================================
                 # ▼▼▼ 行動を環境に反映（ステップ実行）▼▼▼
@@ -672,6 +673,7 @@ class Tester:
                     forward_departed_next_str,
                     round(standard_headway_val, 1),
                     round(target_speed_no_stop, 1),
+                    round(forward_observed_delay_val, 1),
                     reward
                 ]
                 llm_writer.writerow(llm_row)
