@@ -103,9 +103,13 @@ def main(csv_dir='train_reward_csv_direct',
     X_te_s = scaler.transform(X_te)
 
     # クラス不均衡対策: balanced クラス重み
+    # 学習データに1件も存在しないクラス（例: delay_recovery が0件）があると、
+    # compute_class_weight の返す辞書にそのキーが欠落する。Kerasのfitは class_weight に
+    # 0..len(ACTIVE)-1 の全キーを要求するため、欠損クラスは重み1.0で補完する。
     classes = np.unique(y_tr)
     cw = compute_class_weight('balanced', classes=classes, y=y_tr)
-    class_weight = {int(c): float(w) for c, w in zip(classes, cw)}
+    class_weight = {i: 1.0 for i in range(len(ACTIVE))}
+    class_weight.update({int(c): float(w) for c, w in zip(classes, cw)})
     print("クラス重み:", {ACTIVE[k]: round(v, 2) for k, v in class_weight.items()})
 
     model = build_model(X_tr_s.shape[1], len(ACTIVE))

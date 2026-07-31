@@ -2,7 +2,7 @@
 QNetworkの学習具合（Qテーブルの埋まり具合に相当）を可視化するスクリプト。
 
 【目的】
-apex2.pyで学習したQNetwork（model.py / 25次元入力・3行動出力）に対し、
+apex2.pyで学習したQNetwork（model.py / 30次元入力・3行動出力）に対し、
 「速度 × 駅までの距離」の2軸を格子状にスイープした人工状態ベクトルを一括推論し、
 状態空間のどの領域でQ値がどう学習されているかをヒートマップで可視化する。
 表形式Q学習の「テーブルの埋まり具合」に相当する診断を関数近似モデルに対して行う。
@@ -46,7 +46,7 @@ from model import QNetwork
 from required_speed import brake_stop_distance_m
 
 # ===== シナリオ定数（environment2.pyの正規化式と対応させること） =====
-NUM_STATES = 25
+NUM_STATES = 30
 SPEED_LIMIT = 70.0        # 路線制限速度[km/h]（comp/のログと同じ0.875=70/80に対応）
 CBTC_SIGNAL = 70.0        # CBTC信号現示[km/h]
 SCHED_AVG_SPEED = 43.6    # 計画ダイヤの平均速度[km/h]（≒2.178km/180s。「定時運行中」の残り時間の算出に使用）
@@ -69,13 +69,13 @@ def find_latest_weights():
 
 def build_state_grid(dist_km, speed_kmh, pre_action):
     """
-    速度×距離の格子から25次元の正規化状態ベクトル群を構築する。
+    速度×距離の格子から30次元の正規化状態ベクトル群を構築する。
     正規化式は environment2.py の normalized_state と1対1で対応させている。
 
     dist_km: shape (D,) 駅までの残距離[km]
     speed_kmh: shape (V,) 現在速度[km/h]
     pre_action: 0/1/2（惰行/力行/ブレーキ）のシナリオ値
-    戻り値: states shape (V*D, 25), 形状復元用の (V, D)
+    戻り値: states shape (V*D, 30), 形状復元用の (V, D)
     """
     D, V = len(dist_km), len(speed_kmh)
 
@@ -124,6 +124,14 @@ def build_state_grid(dist_km, speed_kmh, pre_action):
         ones,                                                             # 23. 制限変化までの距離（変化なし=1.0）
         ones * SPEED_LIMIT / 80.0,                                        # 24. この先の制限速度
         ones * min(PREV_NOTCH_DURATION, 30.0) / 30.0,                     # 25. 直前ノッチの継続時間
+        # ▼【追加】駅間停車防止の上限速度とモードone-hot（26〜30番目）。
+        #    本ツールは「先行なし・定時」シナリオのため、target_speed_no_stop は required_speed
+        #    に縮退し実質は制限速度近傍。ここでは制限速度で近似し、モードは normal 固定とする。
+        ones * SPEED_LIMIT / 80.0,                                        # 26. 機外停車を避ける加速上限（先行なし≒制限速度）
+        ones,                                                             # 27. モード：通常運転（先行なし＝normal固定）
+        np.zeros_like(vv),                                                # 28. モード：遅延回復
+        np.zeros_like(vv),                                                # 29. モード：駅間停車防止
+        np.zeros_like(vv),                                                # 30. モード：間隔調整
     ], axis=-1).astype(np.float32)
 
     return states.reshape(-1, NUM_STATES), (V, D)

@@ -41,6 +41,7 @@
     "forward_train_delay",
     "forward_departed_flag",
     "standard_headway",
+    "forward_observed_delay",
     "phase_駅出発直後の加速フェーズ（20秒以内）",
     "phase_巡航フェーズ（駅間走行中）",
     "phase_制限速度区間に接近中（500m以内に制限区間在り）",
@@ -59,6 +60,6 @@
     "anti_mid_stop",
     "spacing"
   ],
-  "state_dim": 52,
-  "input_dim": 56
+  "state_dim": 53,
+  "input_dim": 57
 }

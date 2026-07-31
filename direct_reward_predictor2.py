@@ -58,15 +58,24 @@ class DirectRewardPredictor:
         else:
             print(f"[Warning] {gate_path} が見つかりません。ゲートなし（回帰器のみ）で動作します。")
 
-        # モードNN（無ければ mode=normal 固定・後方互換）
+        # モードNN（無ければ / 次元不一致なら mode=normal 固定・後方互換）
         if os.path.exists(mode_model_path) and os.path.exists(mode_scaler_path):
-            self.mode_model = tf.keras.models.load_model(mode_model_path, compile=False)
-            self.mode_scaler = joblib.load(mode_scaler_path)
+            mode_scaler = joblib.load(mode_scaler_path)
+            n_mode = getattr(mode_scaler, 'n_features_in_', self.state_dim)
+            if n_mode != self.state_dim:
+                # モードNNの世代が古い（例: forward_observed_delay 追加前の52次元）と
+                # mode_scaler.transform で分類例外（features不一致）になるため、ロードせず
+                # mode=normal 固定に退避する。評価NN側の次元チェックと同じ思想。
+                print(f"[Warning] モードNNの特徴量数({n_mode})が現行の状態特徴量数({self.state_dim})と不一致のため、"
+                      f"モードNNを無効化し mode=normal 固定で動作します。train_mode_network.py を再学習してください。")
+            else:
+                self.mode_model = tf.keras.models.load_model(mode_model_path, compile=False)
+                self.mode_scaler = mode_scaler
 
-            @tf.function(input_signature=[tf.TensorSpec(shape=[1, n_state], dtype=tf.float32)])
-            def predict_mode_fn(x):
-                return self.mode_model(x, training=False)
-            self.predict_mode_fn = predict_mode_fn
+                @tf.function(input_signature=[tf.TensorSpec(shape=[1, n_mode], dtype=tf.float32)])
+                def predict_mode_fn(x):
+                    return self.mode_model(x, training=False)
+                self.predict_mode_fn = predict_mode_fn
         else:
             print(f"[Warning] {mode_model_path}/{mode_scaler_path} が見つかりません。mode=normal 固定で動作します。")
 

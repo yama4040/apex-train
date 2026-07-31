@@ -11,15 +11,28 @@ from required_speed import calculate_required_speed, brake_stop_distance_m, calc
 
 # 駅での標準停車時間[秒]。自列車は先行の次駅停車をこの標準値と仮定して先行クリア残時間を見積もる。
 # これを超える停車（延着）は「観測されるまで」知らない＝未来リークを防ぐ（設計メモ §13）。
-# 標準を超えた延着は forward_observed_delay（観測遅延）として表現し、加速不要の判断はプロンプト側の
-# 観測遅延ルールに委ねる（B案・sentinelは撤廃）。
 STANDARD_DWELL_S = 30.0
+
+# 先行の次駅停車の「先読み」想定（設計メモ §15）。
+#   先行が前駅（＝自列車の出発駅）を DELAY_DWELL_THRESHOLD_S 以上遅延して出発している場合、
+#   混雑の波及で次駅停車も延びる可能性が高いとみなし、想定停車時間を ASSUMED_DELAYED_DWELL_S に引き上げる。
+#   これにより先行クリア残時間が長く見積もられ、target_speed_no_stop（機外停車回避の加速上限）が
+#   発車直後から低くなる＝発車時の過剰加速を抑える。先行の出発遅延は自列車が観測可能なため因果的。
+DELAY_DWELL_THRESHOLD_S = 30.0    # 先行の前駅出発遅延[秒]の閾値（これ以上で次駅停車延長を想定）
+ASSUMED_DELAYED_DWELL_S = 45.0    # そのときの想定次駅停車時間[秒]（仮値）
+# 観測中（先行が次駅で標準を超えて停車中）の先読みマージン[秒]。観測遅延は「これまでの停車実績」で
+# あり、まだ発車していない以上さらに停車が続く。これを足さないと想定発車時刻＝現在時刻となり
+# クリア残時間が0（＝今退避）に潰れて target が required に戻ってしまうため、最低限の余裕を足す。
+OBSERVED_DWELL_LOOKAHEAD_S = 15.0
 
 # 単一評価値予測器をインポート
 try:
     from direct_reward_predictor2 import DirectRewardPredictor
 except ImportError:
     DirectRewardPredictor = None
+
+# QNetwork観測に含めるモードone-hotのインデックス（reward_features.MODE_CLASSESと同順）
+MODE_INDEX = {'normal': 0, 'delay_recovery': 1, 'anti_mid_stop': 2, 'spacing': 3}
 
 class Environment:
     def __init__(self, time_step=1.0, load_reward_predictor=True):
@@ -139,7 +152,9 @@ class Environment:
         self.prev_notch_duration = 0.0
         # ▲▲▲ 新規追加 ▲▲▲
         self.last_llm_reward = 0.0
-        
+        # QNetwork観測のモードone-hot用。初期観測は'normal'とし、step()で報酬推論後に更新する。
+        self.current_mode = 'normal'
+
         return self.normalized_state
 
     def step(self, action):
@@ -275,7 +290,11 @@ class Environment:
             except Exception as e:
                 print(f"[推論エラー]: {e}")
                 pass
-        
+        # QNetwork観測のモードone-hotを、いま推論した（＝この後返す観測と同一状態の）モードに更新する。
+        # 予測器が無い/推論失敗時は直近値（初期は'normal'）を保持する。
+        if self.reward_predictor is not None:
+            self.current_mode = getattr(self.reward_predictor, 'last_mode', self.current_mode)
+
         llm_reward = max(0.0, min(1.0, llm_reward))  # 0.0〜1.0に強制クリップ
         #llm_reward = (llm_reward * 2) - 1
         self.last_llm_reward = llm_reward  # 分析保存用
@@ -566,7 +585,22 @@ class Environment:
         next_limit_dist_norm = (next_limit_dist / 0.5) if next_limit_dist is not None else 1.0
         next_limit_val_final = next_limit_val if next_limit_val is not None else self.current_speed_limit
 
-        # 5. 観測ベクトルの構築（合計 25次元）
+        # 5. 駅間停車防止の上限速度（target_speed_no_stop）とモードone-hot（今回追加・26〜30番目）
+        #    target_speed_no_stop は step() の報酬側と同一ロジック（required_speed.py）。QNetworkが
+        #    「機外停車を避ける加速上限」を直接観測できるようにし、発車直後の過剰加速とモード後追いを是正する狙い。
+        #    モードは直近の報酬推論で確定した self.current_mode（reset直後は'normal'）を4次元one-hotにする。
+        target_speed_no_stop = calculate_no_stop_target_speed(
+            current_speed=self.speed,
+            dist_to_next_station=self.station_remaining_distance * 1000.0,
+            time_to_next_station=self.remaining_time,
+            forward_clear_remaining_time=self.forward_clear_remaining_time,
+            speed_limit=self.current_speed_limit,
+            current_gradient=current_gradient,
+        )
+        mode_onehot = [0.0, 0.0, 0.0, 0.0]
+        mode_onehot[MODE_INDEX.get(getattr(self, 'current_mode', 'normal'), 0)] = 1.0
+
+        # 6. 観測ベクトルの構築（合計 30次元）
         # ※各値はニューラルネットワークが学習しやすいよう、おおよそ -1.0 〜 1.0 または 0.0 〜 1.0 にスケーリングしています
         return np.array([
             # --- 既存の入力（一部スケーリング見直し） ---
@@ -598,7 +632,14 @@ class Environment:
             np.clip(next_grade_val_final / 40.0, -1.0, 1.0),                 # 22. この先の勾配値（変化なしなら現在の勾配と同値）
             next_limit_dist_norm,                                            # 23. この先の制限速度変化までの距離（0.5km換算、変化なしなら1.0）
             next_limit_val_final / 80.0,                                     # 24. この先の制限速度（変化なしなら現在の制限速度と同値）
-            min(self.prev_notch_duration, 30.0) / 30.0                       # 25. 直前操作（1つ前のノッチ）の継続時間
+            min(self.prev_notch_duration, 30.0) / 30.0,                      # 25. 直前操作（1つ前のノッチ）の継続時間
+
+            # --- 駅間停車防止の上限速度とモードone-hot（今回追加・26〜30番目） ---
+            target_speed_no_stop / 80.0,                                     # 26. 機外停車を避ける加速上限（target_speed_no_stop）
+            mode_onehot[0],                                                  # 27. モード：通常運転
+            mode_onehot[1],                                                  # 28. モード：遅延回復
+            mode_onehot[2],                                                  # 29. モード：駅間停車防止
+            mode_onehot[3],                                                  # 30. モード：間隔調整
         ], dtype=np.float32)
 
     @property
@@ -682,15 +723,27 @@ class Environment:
     @property
     def forward_clear_remaining_time(self):
         """先行列車が自列車の次駅を発車するまでの残り秒数[s]（因果的・観測情報のみ・0以上）。
-        設計メモ §13（B案）:
-          - 先行が次駅到着前/標準停車30秒以内 → 「到着＋標準30秒」で見積もる（延着は先取りしない）
-          - 標準30秒を超えた延着は forward_observed_delay 側で表現し、ここでは0
-            （target_speed_no_stop は required_speed に戻り、加速不要の判断は観測遅延ルールに委ねる）
+        設計メモ §15（先読み化）:
+          - 先行が実際に次駅を発車済み（観測）なら塞ぎ解消 → 0。
+          - (A) 先読み: 先行の前駅出発遅延が閾値(30秒)以上なら、混雑波及で次駅停車も延びると想定し
+                 想定停車時間を45秒に引き上げる（＝発車直後から target を低くし過剰加速を抑える）。
+          - (B) 観測: 先行が次駅で標準30秒を超えて停車中（観測遅延>0）なら、実際の停車時間
+                 （標準30秒＋観測遅延）を下限として想定停車時間を更新する。
         先行なし／次駅で停車しない場合は0。"""
         if self.fowerd_train is None or self.forward_arrive_time is None:
             return 0.0
-        std_depart = self.forward_arrive_time + STANDARD_DWELL_S
-        return max(0.0, std_depart - self._forward_csv_time)
+        f_tau = self._forward_csv_time
+        # 先行が実発車済み（観測）なら塞ぎは解消
+        if self.forward_depart_time is not None and f_tau >= self.forward_depart_time:
+            return 0.0
+        # (A) 先読み: 先行の前駅出発遅延に応じた想定停車時間
+        assumed_dwell = ASSUMED_DELAYED_DWELL_S if self.forward_train_delay >= DELAY_DWELL_THRESHOLD_S else STANDARD_DWELL_S
+        # (B) 観測: 標準を超えて停車中なら実績（標準＋観測遅延）＋先読みマージンを下限に反映。
+        #     マージンを足すことで「まだ停車が続く」を表現し、観測中に target が required へ戻るのを防ぐ。
+        if self.forward_observed_delay > 0.0:
+            assumed_dwell = max(assumed_dwell,
+                                STANDARD_DWELL_S + self.forward_observed_delay + OBSERVED_DWELL_LOOKAHEAD_S)
+        return max(0.0, self.forward_arrive_time + assumed_dwell - f_tau)
 
     @property
     def forward_observed_delay(self):
