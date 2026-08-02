@@ -483,11 +483,18 @@ class Environment:
     def _get_next_gradient_info(self):
         grades = self.train.front_grades
         if len(grades) > 1:
-            dist_km = grades[0]["distance"]
-            next_grade = grades[1]["grade"]
-            if dist_km <= 0.5 and next_grade != 0:
-                direction = "上り" if next_grade > 0 else "下り"
-                return f"{int(dist_km*1000)}m先に{direction}勾配{abs(next_grade)}‰あり"
+            dist_km = grades[0]["distance"]      # 現在の勾配区間が終わるまでの距離
+            cur_grade = grades[0]["grade"]       # 現在の勾配
+            next_grade = grades[1]["grade"]      # 終了後の勾配
+            if dist_km <= 0.5:
+                if next_grade != 0:
+                    direction = "上り" if next_grade > 0 else "下り"
+                    return f"{int(dist_km*1000)}m先に{direction}勾配{abs(next_grade)}‰あり"
+                elif cur_grade != 0:
+                    # 現在の勾配区間が平坦（勾配なし）に変わる＝下り/上り勾配の終了。
+                    # 遅延回復モードで「下り勾配の終了地点手前で減速しすぎない」判断に用いる（設計メモ§16）。
+                    cur_dir = "上り" if cur_grade > 0 else "下り"
+                    return f"{int(dist_km*1000)}m先で{cur_dir}勾配{abs(cur_grade)}‰が終わり平坦になる"
         return "この先目立った勾配なし"
 
     # --- DQN観測ベクトル用の数値版ヘルパー（0.5km以内に変化がなければNoneを返す） ---
