@@ -58,6 +58,11 @@ def extract_gradient_info(text):
         if m.group(2) == '下り':
             val = -val
         return 1.0, dist, val
+    # 現在の勾配が平坦(0‰)に戻る＝下り/上り勾配の終了（設計メモ§16・遅延回復モード用）。
+    # 変化はある(flag=1)が終了後の勾配値は0。環境側の numeric（grades[1]["grade"]=0）と整合させる。
+    m2 = re.search(r'(\d+)m先で(?:上り|下り)勾配\d+\.?\d*‰が終わり平坦になる', text)
+    if m2:
+        return 1.0, float(m2.group(1)), 0.0
     return 0.0, 0.0, 0.0
 
 

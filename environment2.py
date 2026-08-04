@@ -667,9 +667,12 @@ class Environment:
         acceleration = False
         coasting = False
         deceleration = False
+        # 制限速度超過時は力行のみ禁止し、惰行は許可する（設計メモ§18）。
+        # 旧実装は惰行も禁止していたため、0.1km/hの微小超過でも最大ブレーキ(2.5km/h/s)しか選べず、
+        # 惰行(約0.25km/h/s)なら1秒で解消する超過が急減速の引き金になっていた（ci3の70.1→35km/h）。
         if self.speed > self.current_speed_limit:
             acceleration = True
-            coasting = True
+        # 先行列車を追い越した場合は衝突域のため従来どおり力行・惰行とも禁止する（安全側）。
         if self.fowerd_train_position is not None and self.position > self.fowerd_train_position:
             acceleration = True
             coasting = True
