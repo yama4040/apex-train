@@ -14,6 +14,15 @@ import joblib
 
 import reward_features as rf
 
+# 遅延回復モードの判定閾値[km/h]（設計メモ§19）。
+# required_speed は speed_limit で頭打ちになるため、制限との差がこの値以下なら「びたづき」＝
+# 定時到達に制限速度近くの力行が必要、とみなす。学習データ上、差が0.5〜3km/hの行は全体の1%しかなく、
+# プロンプトの記載条件（required ≥ speed_limit − 3km/h）とは実質同一の判定になる。
+DELAY_RECOVERY_PIN_TOL = 0.5
+# 遅延回復を適用してよいCBTC現示の余裕[km/h]。現示が制限速度よりこれ以上低い場合は
+# 先行列車に速度を抑えられている状況とみなし、遅延回復モードにはしない。
+CBTC_MARGIN_FOR_RECOVERY = 5.0
+
 
 class DirectRewardPredictor:
     def __init__(self,
@@ -27,6 +36,10 @@ class DirectRewardPredictor:
         self.mode_model = self.mode_scaler = None
         self.last_mode = 'normal'
         self.state_dim = len(rf.STATE_FEATURE_COLS)
+        # 遅延回復のルール判定で参照する特徴量の位置（_infer_mode で使用）
+        self._idx_required_speed = rf.STATE_FEATURE_COLS.index('required_speed')
+        self._idx_speed_limit = rf.STATE_FEATURE_COLS.index('speed_limit')
+        self._idx_signal_speed = rf.STATE_FEATURE_COLS.index('signal_speed')
 
         if not (os.path.exists(model_path) and os.path.exists(scaler_path)):
             print(f"[Warning] {model_path} または {scaler_path} が見つかりません。報酬は0.0を返します。")
@@ -80,14 +93,43 @@ class DirectRewardPredictor:
             print(f"[Warning] {mode_model_path}/{mode_scaler_path} が見つかりません。mode=normal 固定で動作します。")
 
     def _infer_mode(self, x_state_raw):
-        """状態特徴量(1,state_dim) → (mode one-hot(1,MODE_DIM), mode文字列)。"""
-        if self.mode_model is None:
-            oh = rf.mode_to_onehot('normal').reshape(1, -1)
-            return oh, 'normal'
-        x_scaled = self.mode_scaler.transform(x_state_raw)
-        probs = self.predict_mode_fn(tf.convert_to_tensor(x_scaled, dtype=tf.float32)).numpy()[0]
-        idx = int(np.argmax(probs))
-        mode_str = rf.MODE_CLASSES_ACTIVE[idx] if idx < len(rf.MODE_CLASSES_ACTIVE) else 'normal'
+        """状態特徴量(1,state_dim) → (mode one-hot(1,MODE_DIM), mode文字列)。
+
+        遅延回復モードはルールで決定する（設計メモ§19）。
+          required_speed が speed_limit に「びたづき」（＝定時到達には制限速度近くで
+          走り続ける必要がある）→ delay_recovery、そうでなければ normal。
+          required_speed が制限を下回っている場合はその速度で惰行しても遅延しないため normal でよい。
+        anti_mid_stop（先行に塞がれている）はモード分類NNの判定を優先する
+        （優先順位: 安全 ＞ anti_mid_stop ＞ delay_recovery ＞ normal）。
+
+        ※以前は3クラスすべてをモード分類NNのargmaxで決めていたが、NNは required_speed 以外の
+        　無関係な特徴量（holding_time・ノッチ種別など）にも反応し、条件が成立し続けている区間でも
+        　delay_recovery ↔ normal を反転させていた（run 20260804122227 ci3で確認）。
+        　ルール化により判定が決定的になり、プロンプトのモード定義と実行時の挙動が一致する。
+        """
+        # 先にNNで anti_mid_stop かどうかを判定する（先行列車の塞ぎは状態量の組合せで決まるため）
+        nn_mode = None
+        if self.mode_model is not None:
+            x_scaled = self.mode_scaler.transform(x_state_raw)
+            probs = self.predict_mode_fn(tf.convert_to_tensor(x_scaled, dtype=tf.float32)).numpy()[0]
+            idx = int(np.argmax(probs))
+            nn_mode = rf.MODE_CLASSES_ACTIVE[idx] if idx < len(rf.MODE_CLASSES_ACTIVE) else 'normal'
+        if nn_mode == 'anti_mid_stop':
+            return rf.mode_to_onehot(nn_mode).reshape(1, -1), nn_mode
+
+        # 遅延回復の判定（ルール）
+        #  条件1: required_speed が speed_limit にびたづき（定時到達に制限速度近くの力行が必要）
+        #  条件2: CBTC現示に余裕がある（先行列車に速度を抑えられていない）
+        # 条件2が必要な理由: 先行に接近して現示が下がっている状況では、速度を決めるのは先行であって
+        # 遅延回復ではない。実データでも「びたづきかつLLMがnormalと判定した行」は97%が先行あり・
+        # 63%がCBTC制限下であり、逆にdelay_recoveryと判定された行は85%がCBTC余裕だった。
+        # （なお減速フェーズか否かは判別軸にならない。delay_recovery行の40%は減速フェーズである）
+        req = float(x_state_raw[0, self._idx_required_speed])
+        lim = float(x_state_raw[0, self._idx_speed_limit])
+        sig = float(x_state_raw[0, self._idx_signal_speed])
+        pinned = (lim > 0.0 and lim - req <= DELAY_RECOVERY_PIN_TOL)
+        cbtc_free = (sig >= lim - CBTC_MARGIN_FOR_RECOVERY)
+        mode_str = 'delay_recovery' if (pinned and cbtc_free) else 'normal'
         return rf.mode_to_onehot(mode_str).reshape(1, -1), mode_str
 
     def predict_reward(self, state_info):
