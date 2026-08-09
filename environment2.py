@@ -44,7 +44,10 @@ class Environment:
         stations_csv = self.read_csv("./input/Station.csv")
         self.stations = []
         for i in range(len(stations_csv)):
-            self.stations.append({"position": stations_csv["position"][i], "running_time": stations_csv["rt"][i]})
+            # nameは運転曲線モニター（drive_monitor.py）のメタ情報用。制御ロジックからは参照しない。
+            self.stations.append({"name": str(stations_csv["name"][i]),
+                                  "position": stations_csv["position"][i],
+                                  "running_time": stations_csv["rt"][i]})
             
         # LLM直接報酬予測モデルの初期化（プロセス毎に1度だけ）
         self.reward_predictor = DirectRewardPredictor() if DirectRewardPredictor else None
@@ -769,6 +772,19 @@ class Environment:
         return max(0.0, f_tau - (self.forward_arrive_time + STANDARD_DWELL_S))
 
     @property
+    def forward_dwell_elapsed(self):
+        """先行が自列車の次駅に停車してからの経過時間[秒]（0以上）。
+        forward_observed_delay が「標準30秒を超えた分」なのに対し、こちらは停車開始からの総経過時間。
+        運転曲線モニター（drive_monitor.py）の実況表示用。
+        先行なし／まだ到着していない／既に発車済みなら0。"""
+        if self.fowerd_train is None or self.forward_arrive_time is None:
+            return 0.0
+        f_tau = self._forward_csv_time
+        if self.forward_depart_time is not None and f_tau >= self.forward_depart_time:
+            return 0.0
+        return max(0.0, f_tau - self.forward_arrive_time)
+
+    @property
     def forward_departed_next(self):
         """先行列車が自列車の次駅を発車済みかを表す文字列（プロンプト表示用・観測ベースの実発車）。
         先行なしは空文字、未算出時も空文字。"""
@@ -779,16 +795,19 @@ class Environment:
 
     @property
     def remaining_time(self):
-        if (self.fowerd_train_position is None): return self.departure_station["running_time"] - self.t
-        return self.fixed_running_time - self.t
-    
-    @property
-    def fixed_running_time(self):
-        if (self.fowerd_train_position is None): return self.departure_station["running_time"]
-        for i in range(len(self.standerd_running)):
-            if (self.fowerd_train_position < self.standerd_running[i]["position"]):
-                return self.standerd_running[i]["time"]
-        return self.departure_station["running_time"]
+        """次駅までの残り時間[s]。**先行列車の有無によらず自列車の標準ダイヤ**から算出する（設計メモ §21）。
+        self.t は reset で出発遅延ぶん進めてあるため、発車時点では
+          遅延なし → 標準運転時間(180秒) ／ 遅延Dあり → 180 − D
+        となり、遅延量がそのまま残り時間の不足として反映される。
+
+        ※旧実装は先行列車がいる場合に fixed_running_time（＝先行列車の現在位置に対応する標準ダイヤ時刻）
+          を使っていた。このため自列車の遅延が0でも残り時間が削られ（hw120で180→127秒）、
+          required_speed が制限速度に張り付いて遅延回復モードが誤発動していた。さらに
+          「先行が近いほど残り時間が短い（hw60で60秒）」と向きが逆で、先行に詰まっているほど
+          急ぐ挙動を報酬側が正当化してしまっていた（run 20260806213206 ci4-9 で確認）。
+          先行列車による速度制約は target_speed_no_stop と CBTC現示が担う（§15）。
+        """
+        return self.departure_station["running_time"] - self.t
 
     def _scheduled_time_at(self, position_km):
         """標準走行曲線（計画ダイヤ）から指定位置の計画通過時刻[s]を線形補間で求める。

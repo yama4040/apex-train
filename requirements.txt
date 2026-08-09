@@ -71,6 +71,9 @@ pycparser==3.0
 pydantic==2.13.3
 pydantic-core==2.46.3
 pyparsing==3.3.2
+pyqt5==5.15.11
+pyqt5-qt5==5.15.19
+pyqt5-sip==12.19.0
 python-dateutil==2.9.0.post0
 pyyaml==6.0.3
 ray==2.54.1

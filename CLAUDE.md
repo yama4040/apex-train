@@ -83,6 +83,20 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 ### 強化学習（QNetwork）の診断・可視化
 - `analyze_qnet_coverage.py` — 学習済み`QNetwork`（`model.py`／25次元入力・3行動出力）の「Qテーブルの埋まり具合」に相当する診断ツール。表形式Q学習ではなく関数近似のため文字通りのテーブルは無いが、「速度 × 駅までの距離」を格子状にスイープした人工状態を`data/<run>/*.weights.h5`にロードした重みで一括推論し、①max Q（過大評価・発散のチェック）②貪欲方策マップ（惰行/力行/ブレーキ）③行動間ギャップ（≒0の領域＝行動を区別できていない未学習に近い領域）の3面ヒートマップを`qnet_analysis/`へ出力する。グリッド2軸以外の23次元は`environment2.py`の`normalized_state`と同一の正規化式で「定時運行・先行列車なし・平坦・制限70km/h」のシナリオ値を埋める（時刻依存の加速フェーズ・路線依存の制限接近フェーズはグリッド再現不可のため対象外）。`--overlay-csv`でTester出力CSV（`comp/`・`data/`配下）の実走行訪問状態を白点で重ね描き、`--pre-action`で直前ノッチのシナリオを変更できる。runごとに実行し駅直前領域の行動間ギャップが育つか（テーブルが埋まるか）を追跡する用途。
 
+### 走行結果の可視化（運転曲線モニター）
+- `drive_monitor.py` — テストケースのログCSVを**時間軸に沿って再生する**デスクトップアプリ（PyQt5 + matplotlib、黒背景テーマ）。運転曲線（位置-速度）・ダイヤグラム（時刻-位置）・列車の動きの模式図・自列車実況（モード／ノッチ／現在速度／信号現示／勾配／先行距離／先行停車経過／駅残距離／残り時間）を同時にリアルタイム描画する。開始・停止・リセット、倍速指定（0.1〜50×）、シークバーを備え、CSVはGUIのファイルダイアログで選択する。**2本まで重ねられる**ため「通常運転のみ vs 遅延回復モードあり」のような運転曲線比較に使える（1本目=実線、2本目=破線、模式図では平行な2本の線路として表示）。描画はblitによる差分描画で約20fps、再生速度は実経過時間ベースなのでフレーム落ちしても倍速指定どおりの速さを保つ。
+
+  **表示上の約束**
+  - 列車の模式図は**実スケール**（列車長20m・CBTC停止限界50mの帯を自列車前方に表示）。見た目重視の大きな箱で描くと車間が数百mあっても衝突しているように見えるため。位置は先頭位置とみなし車体は後方へ伸ばす。
+  - 実況の**残り時間**は`raw_rem_time`ではなく「標準運転時間（出発駅のrt）− 経過時刻」。`environment2.remaining_time`は先行列車がいる場合「先行の位置から引いた標準運転時間 − 経過時刻」となり、先行が進まない間は値が止まる／増えるため時計として読めない（先行なしの場合は両者が完全一致する）。
+  - 路線制限速度は信号現示（CBTC指示速度）とほぼ同一のため実況には出さず、運転曲線の背景の階段線としてのみ表示する。
+
+  **入力するログの形式**（`load_run()`が自動判別）
+  - *新形式*（2026-08以降の`apex2.py`が出力）: `data/<run>/<file>_<ci>.csv`（末尾に`time`/`position`/`speed_limit`/`fw_position`/`fw_speed`/`mode`/`action`/`gradient`/`fw_dwell_elapsed`の9列）＋`data/<run>/<file>_<ci>_meta.json`（テストケース説明・自列車/先行の遅延・先行の駅停車時間・出発間隔・駅名/位置・標準運転時間・制限速度プロファイル）。タイトルの「先行遅延○秒，駅停車時間○秒」はmeta.json由来。
+  - *旧形式*（上記の列を持たない過去のログ）: `raw_*`列とモードone-hotから復元する。時刻・制限速度・勾配・先行列車速度は同runの`data/<run>/LLM評価用/<file>_<ci>_llm.csv`（raw CSVと行数が完全一致する）から取得し、無い場合は`environment2.py`の`time_step`規則（駅手前100m以内で0.1秒、それ以外1.0秒）で時刻を再構成する。絶対位置は`input/Station.csv`のindex 11/12（羽前成田→白兎、`env.reset(11, ...)`固定に対応）から復元する。先行停車経過は旧形式では標準30秒を超過中しか復元できない（LLM評価用CSVが持つ`forward_observed_delay`は超過分のみのため）。復元経路はステータスバーに明示される。
+
+  **注意**: 新形式の9列とmeta.jsonは`apex2.py`の`Tester.test_play`のみが出力する（`apex.py`/`apex3.py`は未対応＝旧形式として読まれる）。9列は既存43列の**後ろに追記**しているため、列名で参照する既存の解析スクリプト（`analyze_qnet_coverage.py --overlay-csv`等）には影響しない。先行の停車経過時間は`environment2.Environment.forward_dwell_elapsed`（モニター表示専用に追加したプロパティ。制御・報酬側からは未参照）で取得する。
+
 ## 実行コマンド例
 ```bash
 # 回帰NNを報酬関数として使うApex DQN学習（本研究で基本的に使用）
@@ -99,7 +113,14 @@ python analyze_reward_nn_vs_llm.py
 
 # QNetworkの学習具合（Qテーブルの埋まり具合）を可視化（data/以下の最新重みを自動選択）
 python analyze_qnet_coverage.py --overlay-csv comp/12100_0.csv
+
+# 運転曲線モニター（テストケースのログを再生するGUIアプリ）
+python drive_monitor.py                                        # GUIでCSVを選択
+python drive_monitor.py data/<run>/0_13.csv                    # 起動時に読み込む
+python drive_monitor.py data/<run>/0_0.csv data/<run>/0_13.csv  # 2本を重ねて比較
 ```
+※ WSL等でQtのxcbプラグインが読み込めない環境では自動的にwaylandへフォールバックする。
+それでも起動しない場合は `sudo apt install -y libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0` を実行する。
 ## 先行列車・後続列車がある場合に実現したいこと
 ### 先行列車のみいる場合
 - 先行列車が遅延している場合でも駅間に停車することなく次の駅まで走行する。（駅間に停車しない速度で惰行する方策を獲得する）

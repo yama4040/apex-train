@@ -12,6 +12,11 @@ from tensorflow.keras.losses import Huber
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import joblib
+import matplotlib
+matplotlib.use('Agg')  # 学習曲線をPNG保存するだけなので非対話バックエンドを使う。
+# ※既定の qtagg のままだと、DISPLAYはあるがQtのxcbプラグインを初期化できない環境で
+#   plt.figure() が Python例外ではなく SIGABRT でプロセスごと落ちる。本スクリプトは
+#   plot_learning_curve() を model.save() より前に呼ぶため、学習結果が保存されずに失われる。
 import matplotlib.pyplot as plt
 
 import reward_features as rf  # 特徴量エンジニアリングの共有モジュール（学習・推論で一致）

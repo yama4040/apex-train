@@ -15,6 +15,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import csv
+import json
 import psutil
 import gc
 from collections import deque
@@ -416,10 +417,11 @@ class Tester:
         #     先行遅延は「羽前成田の標準出発間隔120秒」から headway = 120 − 先行遅延 に換算し、
         #     通常走行の先行CSV（delay0_stop{M}）を流用する（新CSV不要・headway換算モデル）。
         test_cases = []
-        test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "forward_delay": 0.0, "desc": "Sim1_Normal"})
+        test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "forward_delay": 0.0,
+                           "forward_dwell": None, "desc": "Sim1_Normal"})
         for ego in [15.0, 30.0, 60.0]:
             test_cases.append({"delay": ego, "f_train_csv": None, "headway": None, "forward_delay": 0.0,
-                               "desc": f"Sim2_EgoDelay{int(ego)}s"})
+                               "forward_dwell": None, "desc": f"Sim2_EgoDelay{int(ego)}s"})
 
         STD_DEPARTURE_INTERVAL = 120.0  # 羽前成田の標準列車出発間隔[秒]
         for f_delay in [0.0, 30.0, 60.0, 90.0]:
@@ -427,6 +429,7 @@ class Tester:
             for stop in [30, 45, 60]:
                 csv_path = f"input/f_train_delay0_stop{stop}.csv"
                 test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "forward_delay": f_delay,
+                                   "forward_dwell": stop,
                                    "desc": f"Sim3_Fdelay{int(f_delay)}_stop{stop}_hw{int(hw)}"})
 
         full_reward = 0
@@ -489,9 +492,54 @@ class Tester:
                 "norm_target_no_stop", "mode_normal", "mode_delay_recovery", "mode_anti_mid_stop", "mode_spacing",
 
                 # 3. ネットワークの出力と報酬情報 (5次元)
-                "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward"
+                "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward",
+
+                # 4. 運転曲線モニター（drive_monitor.py）用の生値（9列）。
+                #    既存列の後ろに追記のみのため、列名参照している既存の解析スクリプトには影響しない。
+                #    値はすべて env.step() 実行「前」＝その行の状態に対応する時点のもの。
+                "time", "position", "speed_limit", "fw_position", "fw_speed", "mode", "action",
+                "gradient", "fw_dwell_elapsed"
             ]
             writer.writerow(header)
+
+            # ▼【追加】テストケースのメタ情報をJSONで保存（モニターのタイトル・背景描画用）
+            #   ログだけでは復元できない情報（テストケース説明・先行の駅停車時間・駅名/位置・
+            #   制限速度プロファイル）を1ファイルにまとめる。
+            try:
+                sec_start_meta = env.position
+                limit_sections_meta = []
+                for fs in env.train.front_sections:
+                    limit_sections_meta.append({
+                        "start": round(float(sec_start_meta), 6),
+                        "distance": round(float(fs["distance"]), 6),
+                        "speed_limit": float(fs["speed_limit"]),
+                    })
+                    sec_start_meta += fs["distance"]
+                meta = {
+                    "desc": tc["desc"],
+                    "case_index": ci,
+                    "ego_delay": float(tc["delay"]),
+                    "forward_delay": float(forward_train_delay_val),
+                    "forward_dwell": tc.get("forward_dwell"),
+                    "headway": (float(tc["headway"]) if tc["headway"] is not None else None),
+                    "f_train_csv": tc["f_train_csv"],
+                    "has_forward_train": env.fowerd_train is not None,
+                    "departure_station": {
+                        "name": env.departure_station.get("name", ""),
+                        "position": float(env.departure_station["position"]),
+                    },
+                    "arrival_station": {
+                        "name": env.arrival_station.get("name", ""),
+                        "position": float(env.arrival_station["position"]),
+                    },
+                    "standard_running_time": float(env.departure_station["running_time"]),
+                    "base_time_step": float(self.time_step),
+                    "speed_limit_sections": limit_sections_meta,
+                }
+                with open(f"{dir_name}{file_name}_{ci}_meta.json", "w", encoding="utf-8") as f_meta:
+                    json.dump(meta, f_meta, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"[test_play] meta.json の保存に失敗しました (ci={ci}): {e}")
             
             # ▼▼▼【追加】LLM評価用のテキストベースCSVのオープン ▼▼▼
             f_llm = open(os.path.join(llm_dir, f"{file_name}_{ci}_llm.csv"), "w", newline="", encoding="utf-8")
@@ -515,11 +563,20 @@ class Tester:
                 positions.append(env.position)
                 times.append(env.t)
                 
+                # ▼【追加】モニター用の生値（ステップ実行前＝この行の状態に対応する時点）
+                current_position = env.position
                 if env.fowerd_train is not None:
                     f_positions.append(env.fowerd_train.position)
                     f_speeds.append(env.fowerd_train.speed)
                     f_times.append(env.t)
-                    
+                    fw_position_val = env.fowerd_train.position
+                    fw_speed_val = env.fowerd_train.speed
+                else:
+                    # 先行列車なし。空欄にして「距離が駅残距離と同値」との区別を付ける
+                    fw_position_val = ""
+                    fw_speed_val = ""
+
+
                 t_state = env.raw_state
                 n_state=env.normalized_state
                 
@@ -561,6 +618,8 @@ class Tester:
                 forward_clear_remaining = env.forward_clear_remaining_time
                 forward_departed_next_str = env.forward_departed_next
                 forward_observed_delay_val = env.forward_observed_delay
+                # 先行が次駅に停車してからの経過時間（モニターの実況表示用）
+                forward_dwell_elapsed_val = env.forward_dwell_elapsed
 
                 # =================================================================
                 # ▼▼▼ 行動を環境に反映（ステップ実行）▼▼▼
@@ -644,7 +703,13 @@ class Tester:
                 # =================================================================
 
                 tri_drive_info = getattr(env, 'latest_rewards_info', [])
-                t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info]
+                # モニター用7列。modeはstep内で推論された運転モード（＝この行の状態に対応）
+                monitor_cols = [
+                    current_t, current_position, speed_limit,
+                    fw_position_val, fw_speed_val, modes[-1], int(action),
+                    pre_step_gradient, forward_dwell_elapsed_val,
+                ]
+                t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info, *monitor_cols]
                 writer.writerow(t_state)
 
                 # ▼▼▼【追加】LLM評価用CSVに行データを書き込み ▼▼▼

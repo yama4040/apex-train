@@ -24,6 +24,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix, classification_report
 import joblib
+import matplotlib
+matplotlib.use('Agg')  # 学習曲線をPNG保存するだけなので非対話バックエンドを使う（詳細は train_reward_network2.py の同箇所）。
 import matplotlib.pyplot as plt
 
 import reward_features as rf

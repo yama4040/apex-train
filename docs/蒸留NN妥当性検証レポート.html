@@ -1,0 +1,437 @@
+<title>蒸留NNの妥当性検証 — 8月中間報告 指摘事項への回答</title>
+<style>
+  :root{
+    --paper:#F5F6F7; --ink:#17212A; --ink-soft:#5A6670; --ink-faint:#8B959C;
+    --rule:#D8DCE0; --rule-soft:#E7EAEC; --surface:#FFFFFF;
+    --accent:#0E5F70; --good:#2C6A4E; --warn:#8C6318; --bad:#9E382B;
+    --good-wash:#E6EFE9; --warn-wash:#F4EDDF; --bad-wash:#F4E5E2; --accent-wash:#E2EDEF;
+    --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic Medium","Yu Gothic","Noto Sans JP",Meiryo,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Consolas,"Courier New",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#10161B; --ink:#E4E8EB; --ink-soft:#9AA5AD; --ink-faint:#727E86;
+      --rule:#2A343C; --rule-soft:#1E262D; --surface:#171F26;
+      --accent:#4FB3C4; --good:#5FA97E; --warn:#C79A4A; --bad:#D2705F;
+      --good-wash:#182A21; --warn-wash:#2B2417; --bad-wash:#2C1D1A; --accent-wash:#12262B;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#10161B; --ink:#E4E8EB; --ink-soft:#9AA5AD; --ink-faint:#727E86;
+    --rule:#2A343C; --rule-soft:#1E262D; --surface:#171F26;
+    --accent:#4FB3C4; --good:#5FA97E; --warn:#C79A4A; --bad:#D2705F;
+    --good-wash:#182A21; --warn-wash:#2B2417; --bad-wash:#2C1D1A; --accent-wash:#12262B;
+  }
+  :root[data-theme="light"]{
+    --paper:#F5F6F7; --ink:#17212A; --ink-soft:#5A6670; --ink-faint:#8B959C;
+    --rule:#D8DCE0; --rule-soft:#E7EAEC; --surface:#FFFFFF;
+    --accent:#0E5F70; --good:#2C6A4E; --warn:#8C6318; --bad:#9E382B;
+    --good-wash:#E6EFE9; --warn-wash:#F4EDDF; --bad-wash:#F4E5E2; --accent-wash:#E2EDEF;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:16px; line-height:1.85;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto; padding:0 24px 96px}
+  .col{max-width:74ch}
+
+  /* ---- ヘッダ ---- */
+  header{padding:64px 0 28px; border-bottom:2px solid var(--ink)}
+  .eyebrow{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 14px;
+  }
+  h1{
+    font-size:clamp(28px,4.4vw,42px); line-height:1.25; font-weight:700;
+    letter-spacing:.01em; margin:0 0 10px; text-wrap:balance;
+  }
+  .subtitle{font-size:17px; color:var(--ink-soft); margin:0; text-wrap:balance}
+  .meta{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+    gap:2px 28px; margin:30px 0 0; padding:0; list-style:none;
+    font-family:var(--mono); font-size:12.5px;
+  }
+  .meta div{padding:9px 0; border-top:1px solid var(--rule)}
+  .meta dt{color:var(--ink-faint); letter-spacing:.06em; font-size:11px; text-transform:uppercase}
+  .meta dd{margin:2px 0 0; color:var(--ink); font-variant-numeric:tabular-nums}
+
+  /* ---- セクション ---- */
+  section{padding-top:56px}
+  .sec-label{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--ink-faint);
+    padding-bottom:8px; border-bottom:1px solid var(--rule); margin-bottom:24px;
+  }
+  h2{font-size:25px; line-height:1.4; font-weight:700; margin:0 0 14px; text-wrap:balance}
+  h3{font-size:17px; font-weight:700; margin:34px 0 10px; letter-spacing:.01em}
+  p{margin:0 0 15px}
+  strong{font-weight:700}
+  .lead{font-size:17.5px; color:var(--ink-soft)}
+  code{font-family:var(--mono); font-size:.9em; background:var(--rule-soft); padding:1px 5px; border-radius:2px}
+
+  /* ---- 指摘の引用 ---- */
+  blockquote{
+    margin:0 0 22px; padding:14px 0 14px 20px;
+    border-left:3px solid var(--accent); background:none;
+    color:var(--ink-soft); font-size:15.5px;
+  }
+  blockquote p{margin:0 0 6px}
+  blockquote p:last-child{margin:0}
+  blockquote .src{font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink-faint); text-transform:uppercase}
+
+  /* ---- 判定 ---- */
+  .verdict{display:flex; gap:14px; align-items:baseline; margin:0 0 18px; flex-wrap:wrap}
+  .tag{
+    font-family:var(--mono); font-size:11.5px; font-weight:700; letter-spacing:.12em;
+    text-transform:uppercase; padding:5px 10px; white-space:nowrap;
+  }
+  .tag.good{color:var(--good); background:var(--good-wash)}
+  .tag.warn{color:var(--warn); background:var(--warn-wash)}
+  .tag.bad{color:var(--bad); background:var(--bad-wash)}
+  .tag.info{color:var(--accent); background:var(--accent-wash)}
+  .verdict .claim{font-size:17px; font-weight:700; flex:1; min-width:260px; text-wrap:balance}
+
+  /* ---- 要約表 ---- */
+  .summary{display:flex; flex-direction:column; gap:0; margin:8px 0 0}
+  .summary .row{
+    display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start;
+    padding:18px 0; border-top:1px solid var(--rule);
+  }
+  .summary .row:last-child{border-bottom:1px solid var(--rule)}
+  .summary h4{margin:0 0 4px; font-size:16px; font-weight:700}
+  .summary p{margin:0; font-size:14.5px; color:var(--ink-soft)}
+
+  /* ---- 表 ---- */
+  .tablewrap{overflow-x:auto; margin:0 0 8px}
+  table{border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums}
+  caption{
+    text-align:left; font-family:var(--mono); font-size:11.5px; letter-spacing:.08em;
+    color:var(--ink-faint); text-transform:uppercase; padding:0 0 8px;
+  }
+  th,td{padding:9px 14px 9px 0; text-align:left; border-bottom:1px solid var(--rule-soft)}
+  thead th{
+    font-family:var(--mono); font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+    color:var(--ink-faint); font-weight:400; border-bottom:1px solid var(--rule); white-space:nowrap;
+  }
+  td.num,th.num{text-align:right; font-family:var(--mono); padding-right:18px}
+  tr.hi td{background:var(--accent-wash); font-weight:700}
+  tr.hi td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  td.g{color:var(--good); font-weight:700}
+  td.b{color:var(--bad); font-weight:700}
+  .note{font-size:13px; color:var(--ink-faint); margin:6px 0 0; line-height:1.7}
+
+  /* ---- バーチャート ---- */
+  .chart{margin:6px 0 4px; display:flex; flex-direction:column; gap:7px}
+  .bar-row{display:grid; grid-template-columns:minmax(140px,190px) 1fr minmax(58px,auto); gap:12px; align-items:center}
+  .bar-lab{font-size:13.5px; color:var(--ink-soft); text-align:right; line-height:1.4}
+  .bar-track{background:var(--rule-soft); height:17px; position:relative}
+  .bar-fill{height:100%; background:var(--ink-faint)}
+  .bar-fill.acc{background:var(--accent)}
+  .bar-fill.bad{background:var(--bad)}
+  .bar-val{font-family:var(--mono); font-size:13px; font-variant-numeric:tabular-nums; color:var(--ink)}
+
+  /* 分布ミニチャート */
+  .dist{display:grid; grid-template-columns:repeat(11,1fr); gap:5px; align-items:end; height:132px; margin:10px 0 6px}
+  .dist .b{display:flex; flex-direction:column; justify-content:flex-end; height:100%; gap:5px}
+  .dist .fill{background:var(--accent); min-height:2px}
+  .dist .fill.peak{background:var(--bad)}
+  .dist .lab{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); text-align:center}
+  .dist-cap{display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--ink-faint)}
+
+  /* ---- 強調ブロック ---- */
+  .callout{border:1px solid var(--rule); border-left:3px solid var(--accent); padding:18px 20px; margin:24px 0; background:var(--surface)}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout h4{margin:0 0 8px; font-size:15px; font-weight:700}
+  .callout p{margin:0 0 8px; font-size:14.5px}
+  .callout p:last-child{margin:0}
+
+  ul{margin:0 0 15px; padding-left:1.15em}
+  li{margin-bottom:7px}
+  li::marker{color:var(--ink-faint)}
+
+  footer{margin-top:72px; padding-top:22px; border-top:1px solid var(--rule); font-family:var(--mono); font-size:12px; color:var(--ink-faint)}
+  a{color:var(--accent)}
+  a:focus-visible,summary:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+  @media (max-width:640px){
+    .bar-row{grid-template-columns:1fr; gap:3px}
+    .bar-lab{text-align:left}
+    .summary .row{grid-template-columns:1fr}
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">検証レポート — Apex-Train / 二重蒸留</p>
+  <h1>蒸留NNの妥当性検証</h1>
+  <p class="subtitle">8月中間報告で受けた「評価NN・モード分類NN」への指摘について、再学習後のモデルを実測で検証した結果</p>
+  <dl class="meta">
+    <div><dt>検証日</dt><dd>2026-08-06</dd></div>
+    <div><dt>学習データ</dt><dd>30,589 行</dd></div>
+    <div><dt>テスト分割</dt><dd>6,118 行 (20%・層化)</dd></div>
+    <div><dt>対象モデル</dt><dd>評価NN / モードNN</dd></div>
+  </dl>
+</header>
+
+<section>
+  <p class="sec-label">要約</p>
+  <h2>3件の指摘に対する検証結果</h2>
+  <p class="lead col">いずれの指摘も、着眼点はデータで裏付けられました。ただし「NNが手抜きをしている」という結論までは至らず、実際には別の要因（正則化項・データ量の偏り）で説明できました。</p>
+
+  <div class="summary">
+    <div class="row">
+      <span class="tag good">反証</span>
+      <div>
+        <h4>評価NNは高頻度値（0.0 / 0.9 / 1.0）を出してLossを下げているだけではないか</h4>
+        <p>ラベルが二峰性である点は事実。しかし最良の「手抜き」ベースラインに対し誤差が <strong>2.8分の1</strong>、予測平均はラベルに単調追従しており、手抜きでは説明できません。</p>
+      </div>
+    </div>
+    <div class="row">
+      <span class="tag info">前提を訂正</span>
+      <div>
+        <h4>モードNNは4分類ならaccuracyがもっと高いはず／Lossが高い気がする</h4>
+        <p>実際は<strong>3クラス</strong>（4つ目は未実装）。accuracy は <strong>0.983</strong> と既に高水準で、表示Lossが高く見えたのは<strong>その23%がL2正則化項</strong>だったためです。</p>
+      </div>
+    </div>
+    <div class="row">
+      <span class="tag warn">該当（ただし方針は現状維持）</span>
+      <div>
+        <h4>モデルが適切なのかについても検証を</h4>
+        <p>本質は3つの特徴量による閾値問題で、深層NNは能力過剰でした。実行時に担う唯一の役割では<strong>1行のルールがNNを上回ります</strong>（F1 0.954 対 0.919）。ただし研究方針としてモードNNは現状維持とします。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">検証の前提</p>
+  <h2>学習データの整理</h2>
+  <div class="col">
+    <p>検証の前に、意味論が古いデータを除外しました。<code>target_speed_no_stop</code> と <code>forward_clear_remaining_time</code> は先読み化の改修（7月31日）で算出方法が変わっており、それ以前に評価されたデータは同じ状況に別の値が付いています。</p>
+    <p>判別には「先行列車の観測遅延が正の行で、先行クリア残時間が 0 に潰れているか」を用いました。旧実装ではここが 0 になり、新実装では 15 秒以上を確保します。<strong>全ファイルが完全に旧・新へ分離</strong>し、中間の混在ファイルはありませんでした。</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <caption>データ整理の結果</caption>
+      <thead><tr><th>項目</th><th class="num">行数</th><th>備考</th></tr></thead>
+      <tbody>
+        <tr><td>退避（先読み化より前の先行ありデータ・6ファイル）</td><td class="num">3,015</td><td>同シナリオは改修後に再生成・再評価済みのため欠落なし</td></tr>
+        <tr class="hi"><td>検証に使用した学習データ</td><td class="num">30,589</td><td>normal 25,596 ／ delay_recovery 3,117 ／ anti_mid_stop 1,876</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">テスト集合は学習時と同一の分割（乱数種42・ラベル層化）を再現し、モデルが学習に使っていない 6,118 行で評価しています。</p>
+</section>
+
+<section>
+  <p class="sec-label">指摘 01 — 評価NN</p>
+  <h2>高頻度値を出してLossを下げているだけではないか</h2>
+
+  <blockquote>
+    <p>評価NNについて、データ数の多い0.0や0.9とか1.0出しとけばLoss下がるとNNが学習していない？</p>
+    <p>0.0についてはデータ数が多いから分類器と0.0以外の値予測器に分けている。それなら、0.0でなく0.9や1.0を出しとけば正解と思っている気がする。</p>
+    <p class="src">8月中間報告 指摘事項より</p>
+  </blockquote>
+
+  <h3>着眼点は正しい — ラベルは確かに二峰性</h3>
+  <p class="col">まず前提を確認すると、指摘のとおりラベルは両端に偏っています。<strong>0.0 と 1.0 だけで全体の 63.9%</strong> を占め、中間値は各 1〜3% しかありません。「両端を出しておけば当たる」構造は実在します。</p>
+
+  <div class="dist" role="img" aria-label="教師ラベルの分布。0.0が35.1%、1.0が28.8%で両端に偏るU字型。中間値は各1から3%">
+    <div class="b"><div class="fill peak" style="height:100%"></div><div class="lab">0.0</div></div>
+    <div class="b"><div class="fill" style="height:16.2%"></div><div class="lab">.1</div></div>
+    <div class="b"><div class="fill" style="height:26.8%"></div><div class="lab">.2</div></div>
+    <div class="b"><div class="fill" style="height:7.7%"></div><div class="lab">.3</div></div>
+    <div class="b"><div class="fill" style="height:6.0%"></div><div class="lab">.4</div></div>
+    <div class="b"><div class="fill" style="height:10.8%"></div><div class="lab">.5</div></div>
+    <div class="b"><div class="fill" style="height:4.8%"></div><div class="lab">.6</div></div>
+    <div class="b"><div class="fill" style="height:2.3%"></div><div class="lab">.7</div></div>
+    <div class="b"><div class="fill" style="height:9.7%"></div><div class="lab">.8</div></div>
+    <div class="b"><div class="fill" style="height:18.5%"></div><div class="lab">.9</div></div>
+    <div class="b"><div class="fill peak" style="height:82.1%"></div><div class="lab">1.0</div></div>
+  </div>
+  <div class="dist-cap"><span>教師ラベルの出現割合（最大 35.1% = 0.0）</span><span>両端で 63.9%</span></div>
+
+  <h3>しかし実測では手抜きになっていない</h3>
+  <p class="col">「手抜き」をした場合に到達する誤差を、自明なベースラインとして計算し、実モデルと比較しました。指摘そのものに対応するのは <strong>「ゲートで0.0を判定し、それ以外は常に1.0を出す」</strong> ベースラインです。</p>
+
+  <div class="chart" role="img" aria-label="平均絶対誤差の比較。合成モデル0.0762に対し、ゲート＋常に1.0は0.2154、その他の自明なベースラインは0.40から0.55">
+    <div class="bar-row"><div class="bar-lab"><strong>合成モデル（実測）</strong></div><div class="bar-track"><div class="bar-fill acc" style="width:13.9%"></div></div><div class="bar-val">0.0762</div></div>
+    <div class="bar-row"><div class="bar-lab">ゲート＋非0は常に1.0<br><span style="font-size:11.5px;color:var(--ink-faint)">＝指摘の手抜き相当</span></div><div class="bar-track"><div class="bar-fill bad" style="width:39.2%"></div></div><div class="bar-val">0.2154</div></div>
+    <div class="bar-row"><div class="bar-lab">常に中央値 0.2</div><div class="bar-track"><div class="bar-fill" style="width:73.0%"></div></div><div class="bar-val">0.4016</div></div>
+    <div class="bar-row"><div class="bar-lab">常に平均 0.45</div><div class="bar-track"><div class="bar-fill" style="width:75.0%"></div></div><div class="bar-val">0.4124</div></div>
+    <div class="bar-row"><div class="bar-lab">常に 0.0（最頻値）</div><div class="bar-track"><div class="bar-fill" style="width:81.8%"></div></div><div class="bar-val">0.4499</div></div>
+    <div class="bar-row"><div class="bar-lab">常に 1.0</div><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><div class="bar-val">0.5501</div></div>
+  </div>
+  <p class="note">平均絶対誤差（MAE・小さいほど良い）。テスト 6,118 行。</p>
+
+  <p class="col">最良の手抜きベースラインに対して <strong>誤差は 2.8 分の 1</strong>。決定係数 R² = 0.844、順位相関 0.917 で、順序も正しく再現しています。</p>
+
+  <h3>決め手 — 予測平均がラベルに単調追従している</h3>
+  <p class="col">仮に「両端しか出していない」なら、中間ラベルの予測平均は両端に張り付くはずです。実際には、ラベルが 0.1 上がるごとに予測平均もきれいに上がっていました。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>ラベル値ごとの予測平均と誤差</caption>
+      <thead>
+        <tr><th>正解ラベル</th><th class="num">件数</th><th class="num">予測平均</th><th class="num">MAE</th><th class="num">±0.1以内</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>0.0</td><td class="num">2,145</td><td class="num">0.018</td><td class="num g">0.018</td><td class="num">97%</td></tr>
+        <tr><td>0.1</td><td class="num">351</td><td class="num">0.192</td><td class="num">0.097</td><td class="num">77%</td></tr>
+        <tr><td>0.2</td><td class="num">573</td><td class="num">0.285</td><td class="num">0.125</td><td class="num">65%</td></tr>
+        <tr><td>0.3</td><td class="num">162</td><td class="num">0.378</td><td class="num">0.129</td><td class="num">58%</td></tr>
+        <tr><td>0.4</td><td class="num">130</td><td class="num">0.459</td><td class="num">0.115</td><td class="num">50%</td></tr>
+        <tr><td>0.5</td><td class="num">234</td><td class="num">0.531</td><td class="num">0.108</td><td class="num">56%</td></tr>
+        <tr><td>0.6</td><td class="num">103</td><td class="num">0.599</td><td class="num">0.112</td><td class="num">62%</td></tr>
+        <tr><td>0.7</td><td class="num">51</td><td class="num">0.680</td><td class="num">0.100</td><td class="num">63%</td></tr>
+        <tr><td>0.8</td><td class="num">208</td><td class="num">0.762</td><td class="num g">0.073</td><td class="num">81%</td></tr>
+        <tr><td>0.9</td><td class="num">400</td><td class="num">0.802</td><td class="num b">0.146</td><td class="num">71%</td></tr>
+        <tr><td>1.0</td><td class="num">1,761</td><td class="num">0.903</td><td class="num">0.097</td><td class="num">77%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">予測値はユニーク 91 種類、標準偏差 0.410（ラベルの標準偏差 0.436）。特定値に潰れていません。ゲート分類器も健全で、ラベル 0.0 に対する平均予測は 0.018、誤って 0.25 超を出す割合は 2.2% でした。</p>
+
+  <div class="callout warn">
+    <h4>ただし、程度問題としては指摘が当たっている面もあります</h4>
+    <p><strong>希薄な中間値は苦手です。</strong> 頻出値（0.0 / 1.0）の MAE 0.054 に対し、希薄値（0.3 / 0.4 / 0.6 / 0.7）は 0.118 と約 2.2 倍。ただし最悪でもラベル刻み 0.1 の約1目盛以内に収まっています。</p>
+    <p><strong>予測が中央へ圧縮されています。</strong> 低いラベルは高めに、高いラベルは低めに出る傾向（最悪はラベル 0.9 を 0.80 と予測）。回帰＋Huber損失の性質で、報酬のダイナミックレンジが約1割縮みます。改善するなら分類化・分位点回帰・サンプル重みの緩和度合いの見直しが候補です。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">指摘 02 — モードNN</p>
+  <h2>accuracyがもっと高いはず／Lossが高い気がする</h2>
+
+  <blockquote>
+    <p>分類モードNN、4分類問題ならaccuracyもう少し高くなるはず（Loss高い気がする）。データ量の偏り。モデルが適切なのかについても検証。</p>
+    <p class="src">8月中間報告 指摘事項より</p>
+  </blockquote>
+
+  <div class="verdict">
+    <span class="tag info">前提を訂正</span>
+    <p class="claim">学習対象は 4 分類ではなく、実質 3 クラスです</p>
+  </div>
+  <p class="col">実装上の学習クラスは <code>normal</code> / <code>delay_recovery</code> / <code>anti_mid_stop</code> の 3 つです。4 つ目の <code>spacing</code>（運転間隔調整）は未実装でデータが 0 件のため学習対象外です。DQN へ渡す one-hot は 4 次元ですが、4 番目は常に 0 になります。</p>
+
+  <h3>accuracy は既に高水準</h3>
+  <div class="tablewrap">
+    <table>
+      <caption>クラス別の判定性能（テスト 6,118 行）</caption>
+      <thead><tr><th>クラス</th><th class="num">件数</th><th class="num">適合率</th><th class="num">再現率</th><th class="num">F1</th><th class="num">確信度</th></tr></thead>
+      <tbody>
+        <tr><td>normal</td><td class="num">5,119</td><td class="num">0.999</td><td class="num">0.980</td><td class="num">0.989</td><td class="num">0.978</td></tr>
+        <tr><td>delay_recovery</td><td class="num">624</td><td class="num">0.940</td><td class="num">0.997</td><td class="num">0.967</td><td class="num">0.990</td></tr>
+        <tr><td>anti_mid_stop</td><td class="num">375</td><td class="num">0.859</td><td class="num">0.989</td><td class="num">0.919</td><td class="num">0.983</td></tr>
+        <tr class="hi"><td>全体 accuracy</td><td class="num">6,118</td><td class="num" colspan="3">0.9825　（macro F1 0.959）</td><td class="num">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">「確信度」は正解クラスに与えた平均確率。多数クラスを常に予測するベースラインは 0.8367 で、<strong>誤り率を 9.3 分の 1 に低減</strong>しています。データ偏りにはクラス重み（balanced）で対処済みです。</p>
+
+  <h3>「Lossが高い」の正体 — 表示値の23%は正則化項</h3>
+  <p class="col">Keras が表示する損失には、交差エントロピーだけでなく <code>kernel_regularizer</code> による L2 ペナルティが含まれます。これを分離すると、予測誤差そのものは十分小さいことが分かりました。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>表示Lossの内訳</caption>
+      <thead><tr><th>モデル</th><th class="num">表示 val_loss</th><th class="num">うち L2 項</th><th class="num">実質の予測誤差</th></tr></thead>
+      <tbody>
+        <tr class="hi"><td>モードNN</td><td class="num">0.0682</td><td class="num">0.0154 (23%)</td><td class="num">0.0528</td></tr>
+        <tr><td>評価NN（回帰器）</td><td class="num">0.0133</td><td class="num">0.0012 (9%)</td><td class="num">0.0121</td></tr>
+        <tr><td>評価NN（ゲート）</td><td class="num">0.1137</td><td class="num">0.0119 (10%)</td><td class="num">0.1018</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">モードNNは表示 Loss の約 4 分の 1 が重み減衰のペナルティで底上げされていました。学習が進んでも Loss が 0 に近づかず頭打ちに見えるのはこのためです。</p>
+</section>
+
+<section>
+  <p class="sec-label">指摘 03 — モデル構成</p>
+  <h2>そもそもモデルが適切なのか</h2>
+
+  <p class="col">モードNN（128–64–32、17,795 パラメータ）が、この課題に対して妥当な複雑さかを確かめるため、より単純な手法と比較しました。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>手法別の性能比較（同一テスト分割）</caption>
+      <thead><tr><th>手法</th><th class="num">accuracy</th><th class="num">macro F1</th><th class="num">anti_mid_stop F1</th></tr></thead>
+      <tbody>
+        <tr><td>現行NN（128–64–32、17,795 params）</td><td class="num">0.9825</td><td class="num">0.9587</td><td class="num">0.9195</td></tr>
+        <tr><td>ロジスティック回帰（線形）</td><td class="num">0.9242</td><td class="num">0.8706</td><td class="num">0.8926</td></tr>
+        <tr><td>決定木 depth=8</td><td class="num">0.9688</td><td class="num">0.9368</td><td class="num">0.9262</td></tr>
+        <tr><td>決定木 depth=4</td><td class="num">0.8477</td><td class="num">0.7995</td><td class="num">0.9078</td></tr>
+        <tr class="hi"><td>プロンプト条件のルール（NN不使用）</td><td class="num">0.5739</td><td class="num">0.6422</td><td class="num">0.9540</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="col">深さ 4 の決定木が使った特徴量は <code>forward_clear_remaining_time</code>（重要度 0.57）、<code>margin_signal_speed</code>（0.21）、<code>target_speed_no_stop</code>（0.18）の 3 つでほぼ説明できます。つまり<strong>本質的には 3 変数の閾値問題</strong>であり、深層学習が本来必要とされる種類の課題ではありません。</p>
+
+  <h3>実行時にモードNNが担う役割は1つだけ</h3>
+  <p class="col">モード判定をルールベース化した改修（設計メモ §19）以降、<code>delay_recovery</code> と <code>normal</code> の判別はルールが行います。したがって実行時にモードNNが担うのは <strong><code>anti_mid_stop</code>（先行列車に塞がれているか）の判定のみ</strong>です。その唯一の評価軸で比較すると、1 行のルールが NN を上回りました。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>anti_mid_stop の判定性能（正解 375 行）</caption>
+      <thead><tr><th>手法</th><th class="num">適合率</th><th class="num">再現率</th><th class="num">F1</th><th class="num">誤検出</th><th class="num">見逃し</th></tr></thead>
+      <tbody>
+        <tr><td>モードNN</td><td class="num">0.859</td><td class="num">0.989</td><td class="num">0.919</td><td class="num b">61</td><td class="num g">4</td></tr>
+        <tr class="hi"><td>ルール <code>target &lt; required − 5</code></td><td class="num">1.000</td><td class="num">0.912</td><td class="num">0.954</td><td class="num">0</td><td class="num">33</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">性格の違いがあります。NN は見逃しが 4 件と少なく安全側に倒れる一方、誤検出 61 件（不要な抑制）を伴います。ルールは誤検出ゼロですが見逃しが 33 件あります。</p>
+
+  <div class="callout">
+    <h4>本研究での方針</h4>
+    <p>ルール置換はパイプラインからNN 1つと再学習工程を取り除け、過去 2 回発生した「モードNNの再学習漏れ」という事故要因も断てる利点があります。一方で、見逃しの少なさ（安全側）は NN の長所です。</p>
+    <p><strong>以上を踏まえ、モードNNは現状のまま研究を進める方針とします。</strong>本節の比較は、モデル選択の妥当性を確認した記録として残します。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">今後</p>
+  <h2>残る課題と次の一手</h2>
+
+  <h3>評価NNの精度向上（指摘01の残課題）</h3>
+  <ul class="col">
+    <li>希薄な中間値の誤差（頻出値の約 2.2 倍）と、予測が中央へ圧縮される現象。分類化・分位点回帰・サンプル重みの緩和度合い（現在は頻度の逆数を平方根で緩和）の見直しが候補です。</li>
+  </ul>
+
+  <h3>データセットの補強（検証中に判明した不足）</h3>
+  <p class="col">妥当性検証と並行してデータの網羅性を測ったところ、以下の不足が見つかりました。いずれも補強用データを生成済みです（各 700 行、LLM 評価待ち）。</p>
+  <div class="tablewrap">
+    <table>
+      <caption>不足箇所と補強データ</caption>
+      <thead><tr><th>不足していた局面</th><th class="num">既存</th><th>補強内容</th></tr></thead>
+      <tbody>
+        <tr><td>先行列車あり × 制限速度付近（余裕 5km/h 未満）</td><td class="num">119 行</td><td>制限まで加速する負例と、上限に沿って抑制する正例を対比</td></tr>
+        <tr><td>自列車の遅延が大きい局面（delay 30 秒以上）</td><td class="num">1,611 行</td><td>出発遅延 60〜120 秒での回復運転（正例）と漫然運転（負例）</td></tr>
+        <tr class="hi"><td>先行が塞ぐ × 大遅延（遅延回復と駅間停車防止の葛藤）</td><td class="num">0 行</td><td>回復を優先して先行に詰める負例と、遅れていても抑える正例</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">3 番目は「安全 &gt; 駅間停車防止 &gt; 遅延回復」という優先順位を教えるデータで、これまで 1 行も存在しませんでした。</p>
+</section>
+
+<section>
+  <p class="sec-label">付記</p>
+  <h2>再学習が無言で失敗する不具合を修正</h2>
+  <div class="col">
+    <p>本検証のための再学習が 1 回目に失敗し、原因を突き止めて修正しました。学習自体は完走するのにモデルだけが更新されないという、気づきにくい失敗でした。</p>
+    <p>matplotlib の既定バックエンドが <code>qtagg</code> で、この環境では Qt の xcb プラグインを初期化できません。そのため <code>plt.figure()</code> が Python の例外ではなく <strong>SIGABRT でプロセスごと終了</strong>させます。学習スクリプトは学習曲線の描画をモデル保存より前に呼んでいたため、学習完了後・保存直前に落ちていました。</p>
+    <p>両学習スクリプトに非対話バックエンド（<code>matplotlib.use('Agg')</code>）を指定して解決し、以降は学習曲線とモデルの双方が正しく保存されることを確認しています。</p>
+  </div>
+</section>
+
+<footer>
+  Apex-Train 研究記録 ／ 詳細は設計メモ §20 を参照
+</footer>
+
+</div>
