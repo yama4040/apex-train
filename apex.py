@@ -1,3 +1,26 @@
+# =====================================================================================
+# 【比較実験用】通常運転モードのみのApex DQN（2026-08-11）
+#
+# 8月中間報告の指摘「遅延回復について、通常運転のみと遅延回復モードを導入した場合の
+# 運転曲線を比較したほうが有用性を比較できるのでは」に対応するアブレーション。
+#
+# 本ファイルは apex2.py から機械的に生成している（生成器: scratchpad/gen_apex_normal.py）。
+# apex2.py との差分は次の2点だけで、それ以外は完全に同一である:
+#   1. from environment2 import Environment  →  from environment_normal import Environment
+#      （報酬予測器がモード判定を行わず、常に mode=normal で評価する）
+#   2. 出力先 data/  →  data_normal/   （現行系の学習結果と混ざらないように分離）
+#
+# したがって両者の差は「運転モードの有無」だけであり、状態30次元・ネットワーク構造・
+# 報酬スケーリング・テストケースはすべて共通。運転曲線を直接比較できる。
+#
+# 使用するモデルは通常運転モードのみで学習したもの:
+#   direct_reward_model_normal.h5 / direct_reward_gate_normal.h5 / direct_reward_scaler_normal.pkl
+#   （train_reward_network_normal.py で作成。現行系のモデルは読み込まない）
+#
+# ※ apex2.py・environment2.py・train_reward_network2.py 等の現行系は一切変更していない。
+# ※ 旧・旧回帰系のapex.py（environment.py + direct_reward_model.h5 を使う実装）は
+#    本ファイルで置き換えた。必要なら git から復元できる（commit 4d7bc76 時点）。
+# =====================================================================================
 #報酬直接予測モデルを使用して、Apex DQNアルゴリズムで列車の制御を学習するためのコード。
 import time
 import datetime
@@ -15,6 +38,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import csv
+import json
 import psutil
 import gc
 from collections import deque
@@ -28,8 +52,70 @@ os.environ['RAY_raylet_start_wait_time_s'] = '120'
 from segment_tree import SumTree
 from model import QNetwork
 
-from environment import Environment
+from environment_normal import Environment
 from actions import Actions
+from required_speed import calculate_required_speed, brake_stop_distance_m, calculate_no_stop_target_speed
+
+# 先行列車の走行パターンCSV（全10種: low50 ＋ delay{0,5,10}×stop{30,45,60}）。
+# Actor（学習）・Tester（検証）で共有し、駅間停車防止モードの塞ぎシナリオを網羅する。
+ALL_F_TRAIN_CSVS = [
+    "input/f_train_low50.csv",
+    "input/f_train_delay0_stop30.csv",
+    "input/f_train_delay0_stop45.csv",
+    "input/f_train_delay0_stop60.csv",
+    "input/f_train_delay5_stop30.csv",
+    "input/f_train_delay5_stop45.csv",
+    "input/f_train_delay5_stop60.csv",
+    "input/f_train_delay10_stop30.csv",
+    "input/f_train_delay10_stop45.csv",
+    "input/f_train_delay10_stop60.csv",
+]
+
+
+def parse_forward_train_delay(csv_path):
+    """先行CSVのファイル名から先行列車の出発遅延[秒]を取り出す（例: f_train_delay10_stop60 -> 10.0）。
+    low50 等で遅延指定が無い場合は0.0を返す。"""
+    if not csv_path:
+        return 0.0
+    import re
+    m = re.search(r"delay(\d+)", csv_path)
+    return float(m.group(1)) if m else 0.0
+
+
+# 運転モード→運転曲線の色（PNGでモード切替を視認するため）。
+#   通常=赤 / 遅延回復=緑 / 機外停車防止(駅間停車防止)=オレンジ / 運転間隔調整=紫
+MODE_COLORS = {"normal": "red", "delay_recovery": "green", "anti_mid_stop": "orange", "spacing": "purple"}
+MODE_LABELS = {"normal": "Normal", "delay_recovery": "DelayRecovery",
+               "anti_mid_stop": "AntiMidStop", "spacing": "Spacing"}
+
+
+def plot_curve_by_mode(ax_plot, x, y, modes):
+    """運転曲線をモード別に色分けして描画する。x,y,modes は同一長（各点＝各ステップ）。
+    連続する同一モードの点をまとめて1本の線として描き（描画効率化）、
+    モードごとに凡例ラベルを1度だけ付ける。ax_plot は plt.plot（または Axes.plot）を想定。"""
+    n = min(len(x), len(y), len(modes))
+    if n == 0:
+        return
+
+    def norm(k):
+        return k if k in MODE_COLORS else "normal"
+
+    seen = set()
+    i = 0
+    while i < n - 1:
+        m = norm(modes[i])
+        j = i
+        while j < n - 1 and norm(modes[j]) == m:
+            j += 1
+        lbl = None
+        if m not in seen:
+            seen.add(m)
+            lbl = f"Own Train ({MODE_LABELS.get(m, m)})"
+        # 点 i..j を1本で描画。次の区間は点jを共有して連結する。
+        ax_plot(x[i:j + 1], y[i:j + 1], color=MODE_COLORS[m], lw=1.3, label=lbl)
+        i = j
+
+
 import random
 import sys
 
@@ -94,18 +180,15 @@ class Actor:
         for var, weight in zip(self.q_network.variables, current_weights):
             var.assign(weight)
 
-        # ▼【変更】遅延バリエーションを削り、遅延0のファイルのみを使用
-        f_train_csv_list = [
-            "input/f_train_low50.csv",
-            "input/f_train_delay0_stop30.csv",
-            "input/f_train_delay0_stop45.csv",
-            "input/f_train_delay0_stop60.csv"
-        ]
+        # ▼【変更 2026-07-23】先行遅延シナリオ（delay5/10）を含む全10種を使用し、
+        #   駅間停車防止モードの塞ぎ状況を学習させる。
+        f_train_csv_list = ALL_F_TRAIN_CSVS
 
         r = random.random()
         ego_delay = random.uniform(0.0, 20.0)  # 自列車の遅延
-        headway = random.uniform(30.0, 120.0)  # ▼【追加】先行列車との出発間隔(30~120秒)
-        
+        # ▼【変更 2026-07-23】headway範囲を20~120秒に拡張（20秒付近で強い塞ぎ＝機外停車寸前を作る）
+        headway = random.uniform(20.0, 120.0)
+
         if (r < 0.4):
             # 先行列車なし
             self.state = self.env.reset(11, ego_delay, 1.0)
@@ -350,23 +433,27 @@ class Tester:
         os.makedirs(llm_dir, exist_ok=True)
         # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-        # テストケースの再構築
+        # ▼【変更 2026-07-26】テストパターン再定義。
+        #   ・通常（遅延なし・先行なし）
+        #   ・先行なし × 自列車遅延[15,30,60]
+        #   ・先行あり × 先行遅延[0,30,60,90] × 次駅停車[30,45,60]、自列車遅延なし。
+        #     先行遅延は「羽前成田の標準出発間隔120秒」から headway = 120 − 先行遅延 に換算し、
+        #     通常走行の先行CSV（delay0_stop{M}）を流用する（新CSV不要・headway換算モデル）。
         test_cases = []
-        test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "desc": "Sim1_Normal"})
-        for delay in [5.0, 10.0, 15.0]:
-            test_cases.append({"delay": delay, "f_train_csv": None, "headway": None, "desc": f"Sim2_Delay_{delay}s"})
-            
-        f_train_csvs = [
-            "input/f_train_low50.csv",
-            "input/f_train_delay0_stop30.csv",
-            "input/f_train_delay0_stop45.csv",
-            "input/f_train_delay0_stop60.csv"
-        ]
-        
-        for csv_path in f_train_csvs:
-            for hw in [30.0, 60.0, 120.0]:
-                csv_name = csv_path.split("/")[-1].replace(".csv", "")
-                test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "desc": f"Sim3_HW{int(hw)}_{csv_name}"})
+        test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "forward_delay": 0.0,
+                           "forward_dwell": None, "desc": "Sim1_Normal"})
+        for ego in [15.0, 30.0, 60.0]:
+            test_cases.append({"delay": ego, "f_train_csv": None, "headway": None, "forward_delay": 0.0,
+                               "forward_dwell": None, "desc": f"Sim2_EgoDelay{int(ego)}s"})
+
+        STD_DEPARTURE_INTERVAL = 120.0  # 羽前成田の標準列車出発間隔[秒]
+        for f_delay in [0.0, 30.0, 60.0, 90.0]:
+            hw = STD_DEPARTURE_INTERVAL - f_delay  # 先行遅延ぶんheadwayが縮む
+            for stop in [30, 45, 60]:
+                csv_path = f"input/f_train_delay0_stop{stop}.csv"
+                test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "forward_delay": f_delay,
+                                   "forward_dwell": stop,
+                                   "desc": f"Sim3_Fdelay{int(f_delay)}_stop{stop}_hw{int(hw)}"})
 
         full_reward = 0
         tc0_cumulative_reward = 0 
@@ -375,13 +462,19 @@ class Tester:
         env = self.env
         
         for tc in test_cases:
-            state = env.reset(11, tc["delay"], 1.0, fowerd_train_time_offset=tc["headway"], fowerd_train_controls=tc["f_train_csv"])
+            state = env.reset(11, tc["delay"], 1.0, fowerd_train_time_offset=tc["headway"],
+                              fowerd_train_controls=tc["f_train_csv"], forward_train_delay=tc.get("forward_delay"))
+            # 駅間停車防止モード用の先行スナップショット（エピソード定数）
+            # headway換算モデル: 先行遅延 = tc["forward_delay"]（= 120 − headway）
+            forward_train_delay_val = tc.get("forward_delay", 0.0)
+            standard_headway_val = tc["headway"] if tc["headway"] is not None else 0.0
             speeds = []
             positions = []
             times = []
             f_speeds = []
             f_positions = []
             f_times = []
+            modes = []  # 各ステップの運転モード（モード別配色用）
             
             done = False
             plt.figure(dpi=200, figsize=(10, 10))
@@ -404,33 +497,86 @@ class Tester:
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
             writer = csv.writer(f)
             
-            # ▼▼▼【修正】実際のデータ構成（合計32列）に合わせた正しいヘッダ ▼▼▼
+            # ▼▼▼【修正】実際のデータ構成（合計43列: raw8 + norm30 + Q3 + step_reward + llm_reward）に合わせた正しいヘッダ ▼▼▼
             header = [
                 # 1. 生の観測値 (raw_state: 8次元)
-                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time", 
+                "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time",
                 "raw_pre_act", "raw_stat_dist_2", "raw_fw_dist", "raw_cbtc_signal",
-                
-                # 2. ネットワーク入力値 (normalized_state: 19次元)
-                "norm_speed", "norm_stat_dist_wide", "norm_stat_dist_zoom", "norm_rem_time", "norm_hold_time", 
+
+                # 2. ネットワーク入力値 (normalized_state: 30次元、environment2.pyのnormalized_stateと同順)
+                "norm_speed", "norm_stat_dist_wide", "norm_stat_dist_zoom", "norm_rem_time", "norm_hold_time",
                 "norm_pre_act_c", "norm_pre_act_a", "norm_pre_act_d", "norm_fw_dist",
                 "norm_cbtc_signal", "norm_speed_limit", "norm_req_stop_dist", "norm_margin_stop_dist",
-                "phase_accel", "phase_cruise", "phase_limit", "phase_decel", "phase_stop", 
+                "phase_accel", "phase_cruise", "phase_limit", "phase_decel", "phase_stop",
                 "norm_fw_speed",
-                
+                "norm_gradient", "norm_next_grade_dist", "norm_next_grade_val",
+                "norm_next_limit_dist", "norm_next_limit_val", "norm_prev_notch_duration",
+                # ▼【追加】駅間停車防止の上限速度とモードone-hot（26〜30番目）
+                "norm_target_no_stop", "mode_normal", "mode_delay_recovery", "mode_anti_mid_stop", "mode_spacing",
+
                 # 3. ネットワークの出力と報酬情報 (5次元)
-                "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward"
+                "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward",
+
+                # 4. 運転曲線モニター（drive_monitor.py）用の生値（9列）。
+                #    既存列の後ろに追記のみのため、列名参照している既存の解析スクリプトには影響しない。
+                #    値はすべて env.step() 実行「前」＝その行の状態に対応する時点のもの。
+                "time", "position", "speed_limit", "fw_position", "fw_speed", "mode", "action",
+                "gradient", "fw_dwell_elapsed"
             ]
             writer.writerow(header)
+
+            # ▼【追加】テストケースのメタ情報をJSONで保存（モニターのタイトル・背景描画用）
+            #   ログだけでは復元できない情報（テストケース説明・先行の駅停車時間・駅名/位置・
+            #   制限速度プロファイル）を1ファイルにまとめる。
+            try:
+                sec_start_meta = env.position
+                limit_sections_meta = []
+                for fs in env.train.front_sections:
+                    limit_sections_meta.append({
+                        "start": round(float(sec_start_meta), 6),
+                        "distance": round(float(fs["distance"]), 6),
+                        "speed_limit": float(fs["speed_limit"]),
+                    })
+                    sec_start_meta += fs["distance"]
+                meta = {
+                    "desc": tc["desc"],
+                    "case_index": ci,
+                    "ego_delay": float(tc["delay"]),
+                    "forward_delay": float(forward_train_delay_val),
+                    "forward_dwell": tc.get("forward_dwell"),
+                    "headway": (float(tc["headway"]) if tc["headway"] is not None else None),
+                    "f_train_csv": tc["f_train_csv"],
+                    "has_forward_train": env.fowerd_train is not None,
+                    "departure_station": {
+                        "name": env.departure_station.get("name", ""),
+                        "position": float(env.departure_station["position"]),
+                    },
+                    "arrival_station": {
+                        "name": env.arrival_station.get("name", ""),
+                        "position": float(env.arrival_station["position"]),
+                    },
+                    "standard_running_time": float(env.departure_station["running_time"]),
+                    "base_time_step": float(self.time_step),
+                    "speed_limit_sections": limit_sections_meta,
+                }
+                with open(f"{dir_name}{file_name}_{ci}_meta.json", "w", encoding="utf-8") as f_meta:
+                    json.dump(meta, f_meta, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"[test_play] meta.json の保存に失敗しました (ci={ci}): {e}")
             
             # ▼▼▼【追加】LLM評価用のテキストベースCSVのオープン ▼▼▼
             f_llm = open(os.path.join(llm_dir, f"{file_name}_{ci}_llm.csv"), "w", newline="", encoding="utf-8")
             llm_writer = csv.writer(f_llm)
             llm_header = [
-                "time", "train_id", "phase", "current_notch", "holding_time", 
-                "prev_notch", "prev_notch_duration", "speed_limit", "signal_speed", 
-                "current_speed", "dist_to_next_station", "time_to_next_station", 
-                "req_stop_dist", "delay", "current_gradient", "next_limit_info", 
-                "next_gradient_info", "forward_info", "backward_info", "reward"
+                "time", "train_id", "phase", "current_notch", "holding_time",
+                "prev_notch", "prev_notch_duration", "speed_limit", "signal_speed",
+                "current_speed", "required_speed", "dist_to_next_station", "time_to_next_station",
+                "req_stop_dist", "delay", "current_gradient", "next_limit_info",
+                "next_gradient_info", "forward_info", "backward_info",
+                # ▼【追加 2026-07-23】駅間停車防止モード用の先行スナップショット（評価プロンプトの入力）
+                "forward_train_delay", "forward_clear_remaining_time", "forward_departed_next",
+                "standard_headway", "target_speed_no_stop", "forward_observed_delay",
+                "reward"
             ]
             llm_writer.writerow(llm_header)
             # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
@@ -440,11 +586,20 @@ class Tester:
                 positions.append(env.position)
                 times.append(env.t)
                 
+                # ▼【追加】モニター用の生値（ステップ実行前＝この行の状態に対応する時点）
+                current_position = env.position
                 if env.fowerd_train is not None:
                     f_positions.append(env.fowerd_train.position)
                     f_speeds.append(env.fowerd_train.speed)
                     f_times.append(env.t)
-                    
+                    fw_position_val = env.fowerd_train.position
+                    fw_speed_val = env.fowerd_train.speed
+                else:
+                    # 先行列車なし。空欄にして「距離が駅残距離と同値」との区別を付ける
+                    fw_position_val = ""
+                    fw_speed_val = ""
+
+
                 t_state = env.raw_state
                 n_state=env.normalized_state
                 
@@ -467,10 +622,12 @@ class Tester:
                 dist_to_next_station = max(env.station_remaining_distance * 1000, 0.0) 
                 time_to_next_station = max(env.remaining_time, 0.0)
                 
-                # 要求停止距離の計算（environment.py の推論側と完全同期）
-                v_ms = max(0.0, current_speed / 3.6)
-                decel_ms2 = 2.5 / 3.6
-                req_stop_dist = (v_ms ** 2) / (2 * decel_ms2) + (v_ms * getattr(env, 'time_step', 1.0))
+                # 要求停止距離の計算（environment2.py の推論側と完全同期）
+                # train.pyの実ダイナミクス（減速ノッチ2.5km/h/s＋走行抵抗＋勾配抵抗）と一致する
+                # モデル（required_speed.py）に統一。旧実装の「2.5km/h/s一定＋空走」モデルは
+                # 抵抗・勾配を無視しており実挙動と乖離していたため廃止。
+                pre_step_gradient = env.train.front_grades[0]["grade"] if len(env.train.front_grades) > 0 else 0.0
+                req_stop_dist = brake_stop_distance_m(current_speed, pre_step_gradient)
                 
                 # 先行列車情報のテキスト化
                 if env.fowerd_train_position is not None:
@@ -479,12 +636,23 @@ class Tester:
                     forward_info_str = f"前方{fw_dist:.1f}m先を{fw_speed:.1f}km/h"
                 else:
                     forward_info_str = "先行列車なし"
-                    
+
+                # 先行クリア残時間・発車済みフラグ・観測遅延（ステップ実行前の現在値）を取得
+                forward_clear_remaining = env.forward_clear_remaining_time
+                forward_departed_next_str = env.forward_departed_next
+                forward_observed_delay_val = env.forward_observed_delay
+                # 先行が次駅に停車してからの経過時間（モニターの実況表示用）
+                forward_dwell_elapsed_val = env.forward_dwell_elapsed
+
                 # =================================================================
                 # ▼▼▼ 行動を環境に反映（ステップ実行）▼▼▼
                 # =================================================================
                 next_state, reward, done = env.step(action)
-                
+
+                # 運転モードの記録（環境の報酬予測器が推論した last_mode。位置/速度の各点と対応）
+                _rp = getattr(env, 'reward_predictor', None)
+                modes.append(getattr(_rp, 'last_mode', 'normal') if _rp is not None else 'normal')
+
                 # =================================================================
                 # 2. ノッチ情報とフェーズの取得（ステップ実行「後」に取るべき情報）
                 # ※ env.step() 後に確実に更新されたプロパティを参照する
@@ -510,16 +678,19 @@ class Tester:
                 prev_notch_duration = getattr(env, 'prev_notch_duration', 0.0)
 
                 # 運転フェーズのテキスト逆生成
-                if dist_to_next_station <= 10.0 and current_speed <= 0.1:
+                # （出発遅延がある場合、env.tは遅延分から開始するため経過時間で判定する）
+                elapsed_t = current_t - getattr(env, 'episode_start_t', 0.0)
+                # 【2026-07-18】environment2._get_current_phase_strと同期（0.1→0.5、目標達成条件と一致）
+                if dist_to_next_station <= 10.0 and current_speed <= 0.5:
                     phase_str = "駅停車完了（速度0km/h）"
-                elif current_t <= 20.0:
+                elif elapsed_t <= 20.0:
                     phase_str = "駅出発直後の加速フェーズ（20秒以内）"
                 elif dist_to_next_station <= 400.0:
                     phase_str = "次駅への減速フェーズ（駅手前400m以内）"
                 else:
                     phase_str = "巡航フェーズ（駅間走行中）"
                 
-                # 勾配・その他のテキスト（environment.py から取得）
+                # 勾配・その他のテキスト（environment2.py から取得）
                 current_gradient = 0.0
                 if hasattr(env, 'train') and hasattr(env.train, 'front_grades') and len(env.train.front_grades) > 0:
                     current_gradient = env.train.front_grades[0]["grade"]
@@ -533,16 +704,41 @@ class Tester:
                     next_gradient_info_str = env._get_next_gradient_info()
 
                 backward_info_str = "後続列車なし"
+
+                # 必要速度（巡航速度）の算出。evaluate_csv_with_llm.pyと同一ロジック（required_speed.py）
+                required_speed = calculate_required_speed(
+                    current_speed=current_speed,
+                    dist_to_next_station=dist_to_next_station,
+                    time_to_next_station=time_to_next_station,
+                    speed_limit=speed_limit,
+                    current_gradient=current_gradient,
+                )
+                # 機外停車を避ける加速上限（駅間停車防止モードの基準速度）。
+                # 先行クリア残時間0（先行なし・クリア済み）なら required_speed に縮退する。
+                target_speed_no_stop = calculate_no_stop_target_speed(
+                    current_speed=current_speed,
+                    dist_to_next_station=dist_to_next_station,
+                    time_to_next_station=time_to_next_station,
+                    forward_clear_remaining_time=forward_clear_remaining,
+                    speed_limit=speed_limit,
+                    current_gradient=current_gradient,
+                )
                 # =================================================================
-                
+
                 tri_drive_info = getattr(env, 'latest_rewards_info', [])
-                t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info]
+                # モニター用7列。modeはstep内で推論された運転モード（＝この行の状態に対応）
+                monitor_cols = [
+                    current_t, current_position, speed_limit,
+                    fw_position_val, fw_speed_val, modes[-1], int(action),
+                    pre_step_gradient, forward_dwell_elapsed_val,
+                ]
+                t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info, *monitor_cols]
                 writer.writerow(t_state)
-                
+
                 # ▼▼▼【追加】LLM評価用CSVに行データを書き込み ▼▼▼
                 llm_row = [
                     current_t,
-                    "Train11",             
+                    "Train11",
                     phase_str,
                     current_notch_str,
                     holding_time,
@@ -551,16 +747,24 @@ class Tester:
                     speed_limit,
                     signal_speed,
                     current_speed,
+                    round(required_speed, 1),
                     dist_to_next_station,
                     time_to_next_station,
                     req_stop_dist,
-                    max(0.0, env.t - env.fixed_running_time),
+                    # 標準運転時間を過ぎてから何秒経ったか（残り時間が-10秒ならdelay=10秒）
+                    env.current_delay,
                     current_gradient,
                     next_limit_info_str,
                     next_gradient_info_str,
                     forward_info_str,
                     backward_info_str,
-                    reward                 
+                    round(forward_train_delay_val, 1),
+                    round(forward_clear_remaining, 1),
+                    forward_departed_next_str,
+                    round(standard_headway_val, 1),
+                    round(target_speed_no_stop, 1),
+                    round(forward_observed_delay_val, 1),
+                    reward
                 ]
                 llm_writer.writerow(llm_row)
                 # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
@@ -576,7 +780,7 @@ class Tester:
             f_llm.close() # ▼▼▼【追加】LLM評価用CSVのクローズ ▼▼▼
             
             # 1枚目: 位置-速度グラフ
-            plt.plot(positions, speeds, "r-", label="Own Train")
+            plot_curve_by_mode(plt.plot, positions, speeds, modes)
             if len(f_positions) > 0:
                 plt.plot(f_positions, f_speeds, "b--", label="Forward Train")
             plt.legend(loc="upper right")
@@ -593,7 +797,7 @@ class Tester:
             plt.axhline(y=hakuto_pos, color='g', linestyle='--', lw=2, label="Hakuto")
             plt.axhline(y=env.arrival_station["position"], color='k', linestyle='-', lw=2, label="Target")
             
-            plt.plot(times, positions, "r-", label="Own Train")
+            plot_curve_by_mode(plt.plot, times, positions, modes)
             
             if len(f_positions) > 0:
                 plt.plot(f_times, f_positions, "b--", label="Forward Train")
@@ -621,7 +825,7 @@ def main(num_actors, gamma, num_states, time_step=1.0):
     now = datetime.datetime.now()
     
     base_dir = os.path.abspath(os.path.dirname(__file__))
-    dir_name = os.path.join(base_dir, "data", now.strftime("%Y%m%d%H%M%S")) + "/"
+    dir_name = os.path.join(base_dir, "data_normal", now.strftime("%Y%m%d%H%M%S")) + "/"
     
     os.makedirs(dir_name, exist_ok=True)
     os.makedirs(dir_name + "replay/", exist_ok=True)
@@ -790,4 +994,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
                 print("=== 全プロセスの再生成完了 ===")
 
 if __name__ == "__main__":
-    main(num_actors=5, gamma=0.9975, num_states=25, time_step=1.0)
+    main(num_actors=5, gamma=0.9975, num_states=30, time_step=1.0)
