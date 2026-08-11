@@ -1,0 +1,42 @@
+{
+  "desc": "数理モデル標準運転曲線（省エネ最適・定時180秒）",
+  "case_index": 0,
+  "ego_delay": 0.0,
+  "forward_delay": 0.0,
+  "forward_dwell": null,
+  "headway": null,
+  "f_train_csv": null,
+  "has_forward_train": false,
+  "departure_station": {
+    "name": "uzen-narita",
+    "position": 21.112
+  },
+  "arrival_station": {
+    "name": "shirousagi",
+    "position": 23.29
+  },
+  "standard_running_time": 180.0,
+  "base_time_step": 1.0,
+  "speed_limit_sections": [
+    {
+      "start": 21.112,
+      "distance": 2.178,
+      "speed_limit": 70.0
+    }
+  ],
+  "standard_curve": {
+    "source": "generate_standard_curve.py",
+    "hold_speed_kmh": 65.25,
+    "coast_position_km": 21.700962,
+    "brake_position_km": 23.262973,
+    "brake_entry_speed_kmh": 23.893,
+    "max_speed_kmh": 65.085,
+    "arrival_time_s": 179.99,
+    "stop_error_m": 0.0218,
+    "traction_energy_kwh": 1.36768,
+    "notch_changes": 2,
+    "power_time_s": 51.09,
+    "coast_time_s": 120.72,
+    "brake_time_s": 8.18
+  }
+}
