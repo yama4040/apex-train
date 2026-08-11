@@ -44,6 +44,7 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 - `train_reward_csv_direct/` — 報酬予測NNの学習に実際に使用するCSV置き場（`train_reward_network*.py`が直接読み込む）
 - `csv_direct_plas/`, `dataset（0～1.0）/` — LLM評価済みデータの中間・派生データ置き場
 - `comp/` — `evaluate_result.py`で比較対象とする個別走行ログCSV置き場
+- `standard_curve/` — `generate_standard_curve.py`が出力する数理モデル標準運転曲線（走行ログCSV・meta.json・運転曲線PNG）
 - `*.h5` / `*.pkl`（リポジトリ直下） — 学習済み報酬予測NNの重みとスケーラ
 - `apex_def.py` / `environment_def.py` — 先行研究で使用していた実装。現行のどのスクリプトからも参照されていないため**書き換え禁止**
 
@@ -83,6 +84,20 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 ### 強化学習（QNetwork）の診断・可視化
 - `analyze_qnet_coverage.py` — 学習済み`QNetwork`（`model.py`／25次元入力・3行動出力）の「Qテーブルの埋まり具合」に相当する診断ツール。表形式Q学習ではなく関数近似のため文字通りのテーブルは無いが、「速度 × 駅までの距離」を格子状にスイープした人工状態を`data/<run>/*.weights.h5`にロードした重みで一括推論し、①max Q（過大評価・発散のチェック）②貪欲方策マップ（惰行/力行/ブレーキ）③行動間ギャップ（≒0の領域＝行動を区別できていない未学習に近い領域）の3面ヒートマップを`qnet_analysis/`へ出力する。グリッド2軸以外の23次元は`environment2.py`の`normalized_state`と同一の正規化式で「定時運行・先行列車なし・平坦・制限70km/h」のシナリオ値を埋める（時刻依存の加速フェーズ・路線依存の制限接近フェーズはグリッド再現不可のため対象外）。`--overlay-csv`でTester出力CSV（`comp/`・`data/`配下）の実走行訪問状態を白点で重ね描き、`--pre-action`で直前ノッチのシナリオを変更できる。runごとに実行し駅直前領域の行動間ギャップが育つか（テーブルが埋まるか）を追跡する用途。
 
+### 数理モデルによる標準運転曲線（DQNの比較基準）
+- `generate_standard_curve.py` — 通常運転モードのテストケース（先行なし・自列車遅延なし）と同一の駅間・同一の物理モデルに対し、**定時（標準運転時間180秒）を満たしつつ力行エネルギーが最小となる運転曲線**を数値計算で求めるスクリプト。DQNの学習結果を「理論上の最適運転」と比較するための基準曲線を作る。
+
+  **モデルの一致**: 運動方程式・引張力・走行抵抗・ブレーキ減速度は`train.py`の`Train.step`と同一（0.01秒積分・3ノッチのみ）、勾配/曲線/制限速度の参照規則は`track.py`と同一（区間境界の扱いまで一致）、ノッチ判断の周期は`environment2.py`の`time_step`と同一（駅手前100mで1.0→0.1秒）。物理定数は起動時に`train.py`の実値と突き合わせ、食い違えば例外を出す。生成した行動系列を`train.py`の`Train`でそのまま再生すると停止位置が完全一致することを確認済み。
+
+  **探索する運転パターン**: 最適列車制御の標準形「力行 → 定速保持（力行と惰行のバンバン制御） → 惰行 → 制動」。設計変数は定速保持速度`V_hold`と惰行開始位置`x_coast`の2つで、`x_coast`は到着時刻＝標準運転時間となるよう二分探索（等式制約）、`V_hold`は力行エネルギー最小となるものをグリッド探索で決める。制動開始点は「駅にちょうど停止する制動曲線」を駅から逆向きに積分して事前に求めるため、白兎駅手前の上り勾配（6.1→9.2‰）まで正確に織り込まれ、停止位置誤差は数cmに収まる。惰行開始点・制動開始点のみ0.01秒刻みで配置し、それ以外のノッチ判断はDQNと同じ周期で行う（制動開始が1秒粗いと十数mの停止誤差になり基準曲線にならないため）。
+
+  **出力**（`standard_curve/`）:
+  - `<名前>.png` — 標準運転曲線。`apex2.py`のTesterが出力する運転曲線PNGと**同一書式**（dpi200・10×10インチ・駅の黒線・制限速度の階段線・モード別配色・凡例位置）なので、DQNの出力PNGとそのまま並べて比較できる。
+  - `<名前>_detail.png` — 勾配を含めた標準運転曲線。ノッチ別（力行/惰行/制動）に色分けし、惰行開始点・制動開始点を示したうえで、運転パターン・到着時刻・停止位置誤差・最高速度・力行エネルギー・ノッチ切替回数などの指標を図中に併記する。
+  - `<名前>.csv` — `apex2.py`のTesterと同一スキーマの52列。`drive_monitor.py`の**新形式**としてそのまま再生・比較できる（観測30次元は`environment2.Environment`に状態を流し込んで生成しているためDQNが見る値と完全一致。Q値・報酬列はNNを使わないため0埋め）。モニター用の`<名前>_meta.json`も併せて出力する。
+
+  `--compare`にDQNの走行ログCSVを渡すと、到着時刻・停止位置誤差・力行エネルギー・ノッチ切替回数を並べて表示し、`_detail.png`にも重ね描きする（新形式・旧形式の両方に対応）。`--sr-out`を付ければ`input/sr_*.csv`と同じ形式の標準走行曲線も書き出せる。
+
 ### 走行結果の可視化（運転曲線モニター）
 - `drive_monitor.py` — テストケースのログCSVを**時間軸に沿って再生する**デスクトップアプリ（PyQt5 + matplotlib、黒背景テーマ）。運転曲線（位置-速度）・ダイヤグラム（時刻-位置）・列車の動きの模式図・自列車実況（モード／ノッチ／現在速度／信号現示／勾配／先行距離／先行停車経過／駅残距離／残り時間）を同時にリアルタイム描画する。開始・停止・リセット、倍速指定（0.1〜50×）、シークバーを備え、CSVはGUIのファイルダイアログで選択する。**2本まで重ねられる**ため「通常運転のみ vs 遅延回復モードあり」のような運転曲線比較に使える（1本目=実線、2本目=破線、模式図では平行な2本の線路として表示）。描画はblitによる差分描画で約20fps、再生速度は実経過時間ベースなのでフレーム落ちしても倍速指定どおりの速さを保つ。
 
@@ -118,6 +133,12 @@ python analyze_qnet_coverage.py --overlay-csv comp/12100_0.csv
 python drive_monitor.py                                        # GUIでCSVを選択
 python drive_monitor.py data/<run>/0_13.csv                    # 起動時に読み込む
 python drive_monitor.py data/<run>/0_0.csv data/<run>/0_13.csv  # 2本を重ねて比較
+
+# 数理モデルによる標準運転曲線（省エネ・定時180秒）の生成とDQNとの比較
+python generate_standard_curve.py                                   # standard_curve/ にCSV・PNGを出力
+python generate_standard_curve.py --strategy pcb                    # 力行→惰行→制動の3ノッチ運転に固定
+python generate_standard_curve.py --compare data/<run>/0_0.csv      # DQNログと指標比較＋重ね描き
+python drive_monitor.py standard_curve/standard_curve_11.csv data/<run>/0_0.csv  # モニターで並べて再生
 ```
 ※ WSL等でQtのxcbプラグインが読み込めない環境では自動的にwaylandへフォールバックする。
 それでも起動しない場合は `sudo apt install -y libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0` を実行する。
