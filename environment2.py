@@ -6,6 +6,7 @@ import pandas as pd
 import codecs
 import math
 import re
+import bisect
 
 from required_speed import calculate_required_speed, brake_stop_distance_m, calculate_no_stop_target_speed
 
@@ -34,6 +35,24 @@ except ImportError:
 # QNetwork観測に含めるモードone-hotのインデックス（reward_features.MODE_CLASSESと同順）
 MODE_INDEX = {'normal': 0, 'delay_recovery': 1, 'anti_mid_stop': 2, 'spacing': 3}
 
+# ===== TASC（停止位置制御）の設定（設計メモ §25）=====
+# 実車と同様に、停止位置制御は自動制御装置が行う前提とする。制動パターンに当たったら
+# エージェントの行動を上書きして強制的に制動し、所定位置に停止させる。
+# 停止の保証は「学習」ではなく「上書き」から来るため、方策の出来に関わらずオーバーランしない。
+# 【重要・設計メモ §30】TASCは**学習ループには入れない**（False固定）。
+# 学習中にTASCで行動を上書きすると、TASC区間は3行動が同一結果になるため
+# Q学習のmax演算子が過大評価バイアスを累積し（177ステップ・γ≈0.99975）、
+# 本来0のQ値が211まで膨張して方策が無差別化した（実測: 行動間の差がQ値の0.36%）。
+# 停止位置制御は学習後の後処理として運転曲線に適用する（apply_tasc_to_runcurve.py）。
+# 制動パターン構築（_build_tasc_pattern / tasc_pattern_speed）は後処理から使うため残してある。
+TASC_ENABLED = False
+TASC_MAX_PATTERN_SPEED = 80.0   # パターンを構築する上限速度[km/h]（路線の制限70km/hに余裕を見る）
+TASC_BUILD_DT = 0.002           # パターン逆積分の時間刻み[s]（細かいほど正確）
+TASC_SUB_DT = 0.01              # 作動中の制御周期[s]。train.pyの積分刻みと同じ下限。
+#   ※作動判定が1ステップ(0.1秒)遅れると最大1.4m行き過ぎ、制動は最大減速のため回復できない。
+#     そのため判定時に「次ステップで進む距離」を先読みする。作動後は0.01秒周期で
+#     パターンに追従することで停止誤差を数cmに抑える（実測: 最大4.2cm）。
+
 class Environment:
     def __init__(self, time_step=1.0, load_reward_predictor=True):
         self.__time_step = time_step
@@ -60,6 +79,16 @@ class Environment:
         
         # 分析・CSV記録用の変数
         self.last_llm_reward = 0.0
+        # TASC（停止位置制御）の制動パターン。停止点ごとに1度だけ構築してキャッシュする。
+        self._tasc_cache = {}
+        self._tasc_dists = None
+        self._tasc_speeds = None
+        self.tasc_engaged = False
+        self.executed_action = None
+        # TASC作動で学習用エピソードを終了するか（設計メモ §28で導入 → §29で既定オフ）。
+        # 終了させるとエピソードが駅に到達せず、クリープが「終了回避」の手段になって
+        # Q値が発散したため、既定はFalse（駅到達まで走らせる）。実験用に残してある。
+        self.terminate_on_tasc = False
 
     def reset(self, departure_index=None, delay=0.0, weight_correction=1.0, fowerd_train_time_offset=None, start_position_offset=0.0, fowerd_train_controls=None, forward_train_delay=None):
         if departure_index is None:
@@ -158,6 +187,20 @@ class Environment:
         # QNetwork観測のモードone-hot用。初期観測は'normal'とし、step()で報酬推論後に更新する。
         self.current_mode = 'normal'
 
+        # TASC（停止位置制御）の制動パターンを用意する。停止点ごとに1度だけ構築してキャッシュする
+        # （区間が同じなら勾配・曲線も同じなのでパターンは変わらない）。
+        self.tasc_engaged = False
+        self.executed_action = None
+        self.tasc_engage_t = None       # TASC作動時刻[s]（分析用）
+        self.tasc_engage_speed = None   # TASC作動時の速度[km/h]（分析用）
+        if TASC_ENABLED:
+            key = round(self.arrival_station["position"], 6)
+            if key not in self._tasc_cache:
+                self._tasc_cache[key] = self._build_tasc_pattern(self.arrival_station["position"])
+            self._tasc_dists, self._tasc_speeds = self._tasc_cache[key]
+        else:
+            self._tasc_dists = self._tasc_speeds = None
+
         return self.normalized_state
 
     def step(self, action):
@@ -188,9 +231,22 @@ class Environment:
         
         action_enum = Actions(action)
         time_step = self.time_step
-        
-        # 列車の状態を更新
-        self.train.step(action_enum, time_step)
+
+        # ===== TASC（停止位置制御）による行動の上書き（設計メモ §25）=====
+        # 制動パターンに当たったらエージェントの行動を上書きし、所定位置に停止させる。
+        # 一度作動したらそのエピソードでは解除しない（実車のTASCと同じ）。
+        # 【重要】リプレイバッファには「実際に実行された行動」を記録する必要があるため、
+        # 呼び出し側は env.step() の後に env.executed_action を参照すること。
+        if TASC_ENABLED and (self.tasc_engaged or self._tasc_should_engage(time_step)):
+            if not self.tasc_engaged:
+                self.tasc_engaged = True
+                self.tasc_engage_t = self.t
+                self.tasc_engage_speed = self.train.speed
+            action_enum = self._tasc_drive(time_step, action_enum)
+        else:
+            # 列車の状態を更新
+            self.train.step(action_enum, time_step)
+        self.executed_action = action_enum
         self.t += time_step
         
         # ▼▼▼ 追加: LLMへ渡すための「事前計算」 ▼▼▼
@@ -298,6 +354,17 @@ class Environment:
         if self.reward_predictor is not None:
             self.current_mode = getattr(self.reward_predictor, 'last_mode', self.current_mode)
 
+        # ===== TASC作動中の評価（設計メモ §28）=====
+        # TASC作動中はエージェントが制御していないため、その区間の操作を評価する意味がない。
+        # よって中立(0.5 → 報酬0)とし、学習の目的関数から除外する。
+        # 【経緯】§27では満点(1.0)を与えていたが、TASC区間が長いほど（＝速く進入するほど）
+        # 報酬が増えるため、高速のまま突っ込んでTASCに任せる挙動を誘発した（実測: 巡航で
+        # llm=0.00の70km/h走行を続けながらTASC区間で+12.7を稼ぐ）。§26の負の報酬も
+        # §27の正の報酬も、いずれも「制御していない区間に報酬を与える」ことが歪みの源だった。
+        # 中立化により、DQNの目的は「TASC作動点までの運転」に限定される。
+        if TASC_ENABLED and self.tasc_engaged:
+            llm_reward = 0.5
+
         llm_reward = max(0.0, min(1.0, llm_reward))  # 0.0〜1.0に強制クリップ
         #llm_reward = (llm_reward * 2) - 1
         self.last_llm_reward = llm_reward  # 分析保存用
@@ -347,6 +414,15 @@ class Environment:
         # --- 4. エピソード終了条件 ---
         goal_reached = False
         failed = False  # 分析・ログ用（報酬には使用しない）
+
+        # ⓪ TASC作動によるエピソード終了（設計メモ §28で導入 → §29で既定オフ）
+        # 【既定オフの理由】TASC作動で終了させると、Actorのエピソードが駅に到達しなくなり
+        # 「作動を避ければエピソードが続く」構造になる。パターンより低速を保てば作動しないため
+        # クリープが終了回避の手段となり、エピソードが819歩まで伸びてQ値が16万まで発散した。
+        # 現在は終了させず、駅到達（②）で正常に終了させる。TASC区間の報酬は中立(0)のままなので
+        # 「制御外区間を評価しない」という §28 の意図は保たれる。
+        if TASC_ENABLED and self.tasc_engaged and self.terminate_on_tasc:
+            done = True
 
         # ① タイムオーバー（大幅な遅延）
         if self.t >= self.departure_station["running_time"] + 60.0:
@@ -792,6 +868,91 @@ class Environment:
             return ""
         return "発車済み" if self._forward_csv_time >= self.forward_depart_time else "未発車"
 
+
+    # ===== TASC（停止位置制御）=====
+    def _build_tasc_pattern(self, stop_position):
+        """停止点から時間を逆に積分して制動パターン（距離→速度）を作る（設計メモ §25）。
+
+        train.py の制動時の運動方程式と同一のモデルを使う:
+            減速度[km/h/s] = DECELERATE + (走行抵抗 + 勾配抵抗 + 曲線抵抗) / FACTOR_OF_INERTIA
+        実際の勾配・曲線を位置ごとに参照するため、`generate_standard_curve.py` と同じく
+        路線の起伏を正確に織り込んだパターンになる。
+        戻り値: (距離リスト[m]・昇順, 速度リスト[km/h]・昇順)
+        """
+        tr = self.train
+        decel_base = -tr.DECELERATE          # 2.5 [km/h/s]
+        factor = tr.FACTOR_OF_INERTIA
+        dists, speeds = [0.0], [0.0]
+        v, pos = 0.0, stop_position
+        while v < TASC_MAX_PATTERN_SPEED:
+            travel_res = 2.39 + 0.0224 * v + 0.00062 * (v ** 2)
+            grade_res = tr.track.get_grade_resistance(pos)
+            curve_res = tr.track.get_curve_resistance(pos)
+            v += (decel_base + (travel_res + grade_res + curve_res) / factor) * TASC_BUILD_DT
+            pos -= (v / 3600.0) * TASC_BUILD_DT
+            dists.append((stop_position - pos) * 1000.0)
+            speeds.append(v)
+        return dists, speeds
+
+    def tasc_pattern_speed(self, dist_m):
+        """停止点まで dist_m [m] の地点における制動パターン速度[km/h]。"""
+        if self._tasc_dists is None or dist_m <= 0.0:
+            return 0.0
+        ds, vs = self._tasc_dists, self._tasc_speeds
+        i = bisect.bisect_left(ds, dist_m)
+        if i >= len(ds):
+            return vs[-1]
+        if i == 0:
+            return vs[0]
+        span = ds[i] - ds[i - 1]
+        if span <= 0:
+            return vs[i]
+        r = (dist_m - ds[i - 1]) / span
+        return vs[i - 1] + r * (vs[i] - vs[i - 1])
+
+    @property
+    def tasc_speed_margin(self):
+        """制動パターンまでの速度余裕[km/h]（正なら余裕あり・0以下でTASC作動域）。"""
+        return self.tasc_pattern_speed(self.station_remaining_distance * 1000.0) - self.speed
+
+    def _tasc_should_engage(self, time_step):
+        """TASCを作動させるべきか。次ステップで進む距離を先読みして判定する。
+        作動判定が遅れると制動（最大減速）では回復できないため、必ず先読みする。"""
+        if not TASC_ENABLED or self._tasc_dists is None:
+            return False
+        d = self.station_remaining_distance * 1000.0
+        if d <= 0.0:
+            return True
+        d_check = d - (self.speed / 3.6) * time_step   # 1ステップ後の位置を先読み
+        return self.speed >= self.tasc_pattern_speed(max(d_check, 0.0))
+
+    def _tasc_drive(self, time_step, agent_action):
+        """TASC作動中の走行。制御周期 TASC_SUB_DT でパターンに追従する。
+        パターンを上回れば制動、下回れば惰行（力行はしない）。
+
+        【安全上の重要事項】TASCは「制動を足す」だけで「制動を弱めない」。
+        エージェントが制動を指示している場合はそれを維持する。TASCの制動パターンは
+        駅の停止位置を目標にしているため、先行列車が駅を塞いでいる等でより手前に
+        停止すべき場面では、パターンだけに従うと先行列車へ接近してしまうためである
+        （CBTC・先行列車対応が常に優先される）。
+
+        戻り値: 実際に適用された行動（リプレイバッファに記録する行動）。
+        """
+        n_sub = max(1, int(round(time_step / TASC_SUB_DT)))
+        h = time_step / n_sub
+        agent_braking = (agent_action == Actions.deceleration)
+        braked = False
+        for _ in range(n_sub):
+            if self.train.speed <= 0.0:
+                break
+            d = self.station_remaining_distance * 1000.0
+            on_pattern = self.train.speed >= self.tasc_pattern_speed(d)
+            a = Actions.deceleration if (on_pattern or agent_braking) else Actions.coasting
+            if a == Actions.deceleration:
+                braked = True
+            self.train.step(a, h)
+        # 制動が1回でもあれば制動として記録する（TASCの介入は本質的に制動である）
+        return Actions.deceleration if braked else Actions.coasting
 
     @property
     def remaining_time(self):

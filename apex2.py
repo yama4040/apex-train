@@ -32,6 +32,7 @@ from model import QNetwork
 from environment2 import Environment
 from actions import Actions
 from required_speed import calculate_required_speed, brake_stop_distance_m, calculate_no_stop_target_speed
+import apply_tasc_to_runcurve as tasc_util   # 学習後の運転曲線にTASC制動を上書きする後処理
 
 # 先行列車の走行パターンCSV（全10種: low50 ＋ delay{0,5,10}×stop{30,45,60}）。
 # Actor（学習）・Tester（検証）で共有し、駅間停車防止モードの塞ぎシナリオを網羅する。
@@ -64,6 +65,131 @@ def parse_forward_train_delay(csv_path):
 MODE_COLORS = {"normal": "red", "delay_recovery": "green", "anti_mid_stop": "orange", "spacing": "purple"}
 MODE_LABELS = {"normal": "Normal", "delay_recovery": "DelayRecovery",
                "anti_mid_stop": "AntiMidStop", "spacing": "Spacing"}
+
+
+def draw_curve_background(bg):
+    """運転曲線（位置-速度）の背景を描く。図の新規作成もここで行う。
+
+    Testerの本編とTASC上書き版で同一書式にするため、描画条件は辞書 bg で受け取る
+    （エピソード終了後は env の状態が進んでしまい再現できないため）。
+    """
+    plt.figure(dpi=200, figsize=(10, 10))
+    plt.xlabel("Position[km]")
+    plt.ylabel("Speed[km/h]")
+    plt.plot([bg["dep_pos"], bg["arr_pos"]], [0, 0], "k-", lw=3)
+    plt.plot([bg["dep_pos"], bg["dep_pos"]], [0, 100], "k-", lw=3)
+    plt.plot([bg["arr_pos"], bg["arr_pos"]], [0, 100], "k-", lw=3)
+    if bg["fw_pos"] is not None:
+        plt.plot([bg["fw_pos"], bg["fw_pos"]], [0, 100], "k-", lw=3)
+    sec_start = bg["sec_start"]
+    front_sections = bg["front_sections"]
+    for fsi in range(len(front_sections)):
+        plt.plot([sec_start, sec_start + front_sections[fsi]["distance"]],
+                 [front_sections[fsi]["speed_limit"], front_sections[fsi]["speed_limit"]], "k-", lw=1)
+        if fsi > 0:
+            plt.plot([sec_start, sec_start],
+                     [front_sections[fsi]["speed_limit"], front_sections[fsi - 1]["speed_limit"]], "k-", lw=1)
+        sec_start += front_sections[fsi]["distance"]
+
+
+def save_tasc_outputs(env, dir_name, file_name, ci, header, csv_rows,
+                      times, positions, speeds, actions, modes, curve_bg):
+    """停止部分をTASCの制動パターンで上書きした運転曲線PNGとCSVログを「TASC制御」フォルダへ保存する。
+
+    学習ループにはTASCを入れていない（environment2.TASC_ENABLED=False）ため、これは
+    エピソード終了後の後処理である。上書きの規則は apply_tasc_to_runcurve.py と共通。
+    PNGはTesterが出す運転曲線と同一書式（モード別配色・先行列車の破線・駅線・制限速度の階段線）。
+    """
+    try:
+        tasc_dir = os.path.join(dir_name, "TASC制御")
+        os.makedirs(tasc_dir, exist_ok=True)
+
+        n = min(len(times), len(positions), len(speeds), len(actions), len(modes), len(csv_rows))
+        if n < 3:
+            return
+        t2, p2, v2, a2, m2, info = tasc_util.overwrite_trajectory(
+            env, times[:n], positions[:n], speeds[:n], actions[:n], modes[:n])
+        b = info["splice"]
+
+        # --- 運転曲線PNG（Testerの本編と同一書式）---
+        draw_curve_background(curve_bg)
+        plot_curve_by_mode(plt.plot, p2, v2, m2)
+        # 先行列車は時間軸が変わるため新しい時刻で引き直す
+        fw = [tasc_util.forward_train_at(env, t) for t in t2]
+        fw = [x for x in fw if x is not None]
+        if len(fw) > 0:
+            plt.plot([x[0] for x in fw], [x[1] for x in fw], "b--", label="Forward Train")
+        plt.legend(loc="upper right")
+        plt.savefig(os.path.join(tasc_dir, f"{file_name}_{ci}_tasc.png"))
+        plt.close('all')
+
+        # --- 上書き後のCSVログ（本編と同一スキーマ + source列）---
+        # TASC区間の観測値は「envに状態を流し込んで env.raw_state を読む」方式で作る。
+        # 手計算で埋めると本編と定義がずれるおそれがあるため（残り時間・CBTC現示・保持時間など）、
+        # 本編とまったく同じプロパティ経由で算出する。
+        col = {name: i for i, name in enumerate(header)}
+        # 引き継ぎ点でのノッチ保持状況を本編のCSV行から引き継ぐ（TASC区間もenvと同じ規則で更新する）
+        hold_time = float(csv_rows[b][col["raw_hold_time"]]) if "raw_hold_time" in col else 0.0
+        pre_act = int(csv_rows[b][col["raw_pre_act"]]) if "raw_pre_act" in col else int(Actions.coasting)
+        prev_notch_duration = getattr(env, "prev_notch_duration", 0.0)
+        prev_notch = getattr(env, "prev_notch", Actions.coasting)
+
+        with open(os.path.join(tasc_dir, f"{file_name}_{ci}_tasc.csv"), "w", newline="") as f_t:
+            w = csv.writer(f_t)
+            w.writerow([*header, "source"])
+            for i in range(b):
+                w.writerow([*csv_rows[i], "DQN"])
+            for i in range(b, len(t2)):
+                if i > b:
+                    # env.step と同じ規則でノッチ保持時間を進める（1つ前の行で実行した行動の分）
+                    dt = t2[i] - t2[i - 1]
+                    if int(a2[i - 1]) == pre_act:
+                        hold_time += dt
+                    else:
+                        prev_notch, prev_notch_duration = Actions(pre_act), hold_time
+                        hold_time = dt
+                        pre_act = int(a2[i - 1])
+
+                # envへ現在の状態を流し込む（本編の各プロパティがそのまま使えるようにする）
+                env.t = t2[i]
+                env.train.set_states(v2[i], p2[i])
+                env.holding_time = hold_time
+                env.pre_action = Actions(pre_act)
+                env.prev_notch = prev_notch
+                env.prev_notch_duration = prev_notch_duration
+                fwx = tasc_util.forward_train_at(env, t2[i])
+                if fwx is not None and env.fowerd_train is not None:
+                    env.fowerd_train.set_states(fwx[1], fwx[0])
+
+                raw = env.raw_state
+                gradient = env.train.front_grades[0]["grade"] if len(env.train.front_grades) > 0 else 0.0
+
+                # NN入力・Q値・報酬はTASC区間では使わないため空欄のままにする
+                row = [""] * len(header)
+                def put(name, val):
+                    if name in col:
+                        row[col[name]] = val
+                # 生の観測8列（本編と同一の定義・同一の順序）
+                for name, val in zip(("raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time",
+                                      "raw_pre_act", "raw_stat_dist_2", "raw_fw_dist", "raw_cbtc_signal"), raw):
+                    put(name, int(val) if name == "raw_pre_act" else round(float(val), 6))
+                # モニター用9列
+                put("time", round(t2[i], 3))
+                put("position", round(p2[i], 6))
+                put("speed_limit", env.current_speed_limit)
+                put("fw_position", round(fwx[0], 6) if fwx else "")
+                put("fw_speed", round(fwx[1], 4) if fwx else "")
+                put("mode", m2[i])
+                put("action", int(a2[i]))
+                put("gradient", gradient)
+                put("fw_dwell_elapsed", round(env.forward_dwell_elapsed, 3))
+                w.writerow([*row, "TASC"])
+
+        print(f"[TASC] {file_name}_{ci}: 引き継ぎ={info['reason']} "
+              f"作動速度={info['engage_speed'] if info['engage_speed'] is None else round(info['engage_speed'], 1)}km/h "
+              f"停止位置誤差={info['stop_error_m'] * 100:.1f}cm")
+    except Exception as ex:
+        print(f"[TASC] 上書き出力に失敗しました (ci={ci}): {ex}")
 
 
 def plot_curve_by_mode(ax_plot, x, y, modes):
@@ -195,9 +321,16 @@ class Actor:
             
             priority_correction=(0.1-(min(max(self.env.station_remaining_distance,0.0),0.1)+0.001))*500+1
             next_state, reward, done = self.env.step(action)
-            nest_forbidden_action=self.env.forbidden_action 
-            self.episode_rewards += reward  
-            
+            nest_forbidden_action=self.env.forbidden_action
+            self.episode_rewards += reward
+
+            # 【TASC対応・設計メモ §25】TASC作動中は環境が行動を上書きするため、
+            # リプレイバッファには「実際に実行された行動」を記録する。DQNが選んだ行動を
+            # 記録すると、実際には起きていない遷移をQ学習が学んでしまう。
+            executed = self.env.executed_action
+            if executed is not None:
+                action = int(executed)
+
             transition = (state, action, reward, next_state, done, nest_forbidden_action, self.gamma, priority_correction)
             self.buffer.append(transition)
             self.state = next_state
@@ -452,23 +585,20 @@ class Tester:
             f_positions = []
             f_times = []
             modes = []  # 各ステップの運転モード（モード別配色用）
+            exec_actions = []  # 各ステップで実際に実行された行動（TASC後処理用）
+            csv_rows = []      # 出力したCSV行の控え（TASC上書きログ用）
             
             done = False
-            plt.figure(dpi=200, figsize=(10, 10))
-            plt.xlabel("Position[km]")
-            plt.ylabel("Speed[km/h]")
-            plt.plot([env.departure_station["position"], env.arrival_station["position"]], [0, 0], "k-", lw=3)
-            plt.plot([env.departure_station["position"], env.departure_station["position"]], [0, 100], "k-", lw=3)
-            plt.plot([env.arrival_station["position"], env.arrival_station["position"]], [0, 100], "k-", lw=3)
-            if env.fowerd_train_position is not None:
-                plt.plot([env.fowerd_train_position, env.fowerd_train_position], [0, 100], "k-", lw=3)
-            sec_start = env.position
-            front_sections=env.train.front_sections
-            for fsi in range(len(front_sections)):
-                plt.plot([sec_start, sec_start + front_sections[fsi]["distance"]], [front_sections[fsi]["speed_limit"], front_sections[fsi]["speed_limit"]], "k-", lw=1)
-                if (fsi>0):
-                    plt.plot([sec_start, sec_start], [front_sections[fsi]["speed_limit"], front_sections[fsi-1]["speed_limit"]], "k-", lw=1)
-                sec_start += front_sections[fsi]["distance"]
+            # 運転曲線の背景（駅線・制限速度の階段線）。TASC上書き版の作図でも同じものを使うため
+            # 描画条件を辞書に控えておく（エピソード後はenvの状態が変わっているため）。
+            curve_bg = {
+                "dep_pos": env.departure_station["position"],
+                "arr_pos": env.arrival_station["position"],
+                "fw_pos": env.fowerd_train_position,
+                "sec_start": env.position,
+                "front_sections": [dict(fs) for fs in env.train.front_sections],
+            }
+            draw_curve_background(curve_bg)
 
             # 既存の生データ用CSVのオープン
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
@@ -629,6 +759,7 @@ class Tester:
                 # 運転モードの記録（環境の報酬予測器が推論した last_mode。位置/速度の各点と対応）
                 _rp = getattr(env, 'reward_predictor', None)
                 modes.append(getattr(_rp, 'last_mode', 'normal') if _rp is not None else 'normal')
+                exec_actions.append(int(env.executed_action) if env.executed_action is not None else int(action))
 
                 # =================================================================
                 # 2. ノッチ情報とフェーズの取得（ステップ実行「後」に取るべき情報）
@@ -706,11 +837,14 @@ class Tester:
                 # モニター用7列。modeはstep内で推論された運転モード（＝この行の状態に対応）
                 monitor_cols = [
                     current_t, current_position, speed_limit,
-                    fw_position_val, fw_speed_val, modes[-1], int(action),
+                    fw_position_val, fw_speed_val, modes[-1],
+                    # 【TASC対応】実際に実行された行動を記録する（TASC作動中は上書きされるため）
+                    int(env.executed_action) if env.executed_action is not None else int(action),
                     pre_step_gradient, forward_dwell_elapsed_val,
                 ]
                 t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info, *monitor_cols]
                 writer.writerow(t_state)
+                csv_rows.append(list(t_state))   # TASC上書きログ用に控える
 
                 # ▼▼▼【追加】LLM評価用CSVに行データを書き込み ▼▼▼
                 llm_row = [
@@ -785,7 +919,11 @@ class Tester:
             
             plt.savefig(f"{dir_name}{file_name}_{ci}_diagram.png")
             plt.close('all')
-            
+
+            # ▼▼▼【追加】TASC制御で停止部分を上書きした運転曲線とログを出力 ▼▼▼
+            save_tasc_outputs(env, dir_name, file_name, ci, header, csv_rows,
+                              times, positions, speeds, exec_actions, modes, curve_bg)
+
             ci += 1
             
         try:

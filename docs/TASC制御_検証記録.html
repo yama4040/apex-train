@@ -1,0 +1,319 @@
+<title>TASC制御の導入検証 — 4回の失敗と根本原因</title>
+<style>
+  :root{
+    --paper:#F5F6F7; --ink:#17212A; --ink-soft:#5A6670; --ink-faint:#8B959C;
+    --rule:#D8DCE0; --rule-soft:#E7EAEC; --surface:#FFFFFF;
+    --accent:#0E5F70; --good:#2C6A4E; --warn:#8C6318; --bad:#9E382B;
+    --good-wash:#E6EFE9; --warn-wash:#F4EDDF; --bad-wash:#F4E5E2; --accent-wash:#E2EDEF;
+    --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic Medium","Yu Gothic","Noto Sans JP",Meiryo,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Consolas,"Courier New",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#10161B; --ink:#E4E8EB; --ink-soft:#9AA5AD; --ink-faint:#727E86;
+      --rule:#2A343C; --rule-soft:#1E262D; --surface:#171F26;
+      --accent:#4FB3C4; --good:#5FA97E; --warn:#C79A4A; --bad:#D2705F;
+      --good-wash:#182A21; --warn-wash:#2B2417; --bad-wash:#2C1D1A; --accent-wash:#12262B;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#10161B; --ink:#E4E8EB; --ink-soft:#9AA5AD; --ink-faint:#727E86;
+    --rule:#2A343C; --rule-soft:#1E262D; --surface:#171F26;
+    --accent:#4FB3C4; --good:#5FA97E; --warn:#C79A4A; --bad:#D2705F;
+    --good-wash:#182A21; --warn-wash:#2B2417; --bad-wash:#2C1D1A; --accent-wash:#12262B;
+  }
+  :root[data-theme="light"]{
+    --paper:#F5F6F7; --ink:#17212A; --ink-soft:#5A6670; --ink-faint:#8B959C;
+    --rule:#D8DCE0; --rule-soft:#E7EAEC; --surface:#FFFFFF;
+    --accent:#0E5F70; --good:#2C6A4E; --warn:#8C6318; --bad:#9E382B;
+    --good-wash:#E6EFE9; --warn-wash:#F4EDDF; --bad-wash:#F4E5E2; --accent-wash:#E2EDEF;
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--paper); color:var(--ink);
+       font-family:var(--sans); font-size:16px; line-height:1.85; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px; margin:0 auto; padding:0 24px 96px}
+  .col{max-width:74ch}
+
+  header{padding:64px 0 28px; border-bottom:2px solid var(--ink)}
+  .eyebrow{font-family:var(--mono); font-size:11.5px; letter-spacing:.18em;
+           text-transform:uppercase; color:var(--accent); margin:0 0 14px}
+  h1{font-size:clamp(28px,4.4vw,42px); line-height:1.25; font-weight:700;
+     letter-spacing:.01em; margin:0 0 10px; text-wrap:balance}
+  .subtitle{font-size:17px; color:var(--ink-soft); margin:0; text-wrap:balance}
+  .meta{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+        gap:2px 28px; margin:30px 0 0; padding:0; list-style:none;
+        font-family:var(--mono); font-size:12.5px}
+  .meta div{padding:9px 0; border-top:1px solid var(--rule)}
+  .meta dt{color:var(--ink-faint); letter-spacing:.06em; font-size:11px; text-transform:uppercase}
+  .meta dd{margin:2px 0 0; color:var(--ink); font-variant-numeric:tabular-nums}
+
+  section{padding-top:56px}
+  .sec-label{font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+             text-transform:uppercase; color:var(--ink-faint);
+             padding-bottom:8px; border-bottom:1px solid var(--rule); margin-bottom:24px}
+  h2{font-size:25px; line-height:1.4; font-weight:700; margin:0 0 14px; text-wrap:balance}
+  h3{font-size:17px; font-weight:700; margin:34px 0 10px; letter-spacing:.01em}
+  p{margin:0 0 15px}
+  .lead{font-size:17.5px; color:var(--ink-soft)}
+  code{font-family:var(--mono); font-size:.9em; background:var(--rule-soft); padding:1px 5px; border-radius:2px}
+
+  .tag{font-family:var(--mono); font-size:11.5px; font-weight:700; letter-spacing:.12em;
+       text-transform:uppercase; padding:5px 10px; white-space:nowrap; display:inline-block}
+  .tag.good{color:var(--good); background:var(--good-wash)}
+  .tag.warn{color:var(--warn); background:var(--warn-wash)}
+  .tag.bad{color:var(--bad); background:var(--bad-wash)}
+  .tag.info{color:var(--accent); background:var(--accent-wash)}
+
+  .tablewrap{overflow-x:auto; margin:0 0 8px}
+  table{border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums}
+  caption{text-align:left; font-family:var(--mono); font-size:11.5px; letter-spacing:.08em;
+          color:var(--ink-faint); text-transform:uppercase; padding:0 0 8px}
+  th,td{padding:9px 14px 9px 0; text-align:left; border-bottom:1px solid var(--rule-soft); vertical-align:top}
+  thead th{font-family:var(--mono); font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+           color:var(--ink-faint); font-weight:400; border-bottom:1px solid var(--rule); white-space:nowrap}
+  td.num,th.num{text-align:right; font-family:var(--mono); padding-right:18px}
+  tr.hi td{background:var(--accent-wash); font-weight:700}
+  tr.hi td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  td.g{color:var(--good); font-weight:700}
+  td.b{color:var(--bad); font-weight:700}
+  .note{font-size:13px; color:var(--ink-faint); margin:6px 0 0; line-height:1.7}
+
+  /* 試行の連なり（実際に時系列の反復なので番号が意味を持つ） */
+  .try{display:grid; grid-template-columns:auto 1fr; gap:0 20px; padding:22px 0; border-top:1px solid var(--rule)}
+  .try:last-of-type{border-bottom:1px solid var(--rule)}
+  .try .no{font-family:var(--mono); font-size:12px; color:var(--ink-faint); letter-spacing:.1em; padding-top:3px}
+  .try h4{margin:0 0 6px; font-size:16.5px; font-weight:700}
+  .try .setting{font-family:var(--mono); font-size:12.5px; color:var(--accent); margin:0 0 10px}
+  .try p{margin:0 0 8px; font-size:14.5px; color:var(--ink-soft)}
+  .try .ev{font-family:var(--mono); font-size:12.5px; background:var(--rule-soft);
+           padding:9px 12px; margin:10px 0 0; color:var(--ink); overflow-x:auto; white-space:nowrap}
+
+  /* 因果の連鎖 */
+  .chain{margin:14px 0 6px; padding:0; list-style:none; counter-reset:ch}
+  .chain li{position:relative; padding:0 0 16px 34px; border-left:2px solid var(--rule); margin-left:9px}
+  .chain li:last-child{border-left-color:transparent; padding-bottom:0}
+  .chain li::before{counter-increment:ch; content:counter(ch);
+    position:absolute; left:-11px; top:0; width:20px; height:20px; border-radius:50%;
+    background:var(--accent); color:var(--paper); font-family:var(--mono); font-size:11px;
+    font-weight:700; display:flex; align-items:center; justify-content:center}
+  .chain strong{font-weight:700}
+  .chain .q{font-family:var(--mono); font-size:12.5px; color:var(--ink-faint); display:block; margin-top:3px}
+
+  .callout{border:1px solid var(--rule); border-left:3px solid var(--accent);
+           padding:18px 20px; margin:24px 0; background:var(--surface)}
+  .callout.bad{border-left-color:var(--bad)}
+  .callout.good{border-left-color:var(--good)}
+  .callout h4{margin:0 0 8px; font-size:15px; font-weight:700}
+  .callout p{margin:0 0 8px; font-size:14.5px}
+  .callout p:last-child{margin:0}
+  .formula{font-family:var(--mono); font-size:14px; background:var(--rule-soft);
+           padding:14px 16px; margin:14px 0; overflow-x:auto; line-height:1.9}
+
+  ul{margin:0 0 15px; padding-left:1.15em}
+  li{margin-bottom:7px}
+  li::marker{color:var(--ink-faint)}
+
+  footer{margin-top:72px; padding-top:22px; border-top:1px solid var(--rule);
+         font-family:var(--mono); font-size:12px; color:var(--ink-faint)}
+  a{color:var(--accent)}
+  a:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+  @media (max-width:640px){ .try{grid-template-columns:1fr; gap:6px} }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">検証記録 — Apex-Train / 停止位置制御</p>
+  <h1>TASC制御の導入検証</h1>
+  <p class="subtitle">停止精度±20cmを実現するまでの4回の失敗と、その根本原因、そして最終的にたどり着いた構成</p>
+  <dl class="meta">
+    <div><dt>期間</dt><dd>2026-08-12 〜 08-13</dd></div>
+    <div><dt>試行回数</dt><dd>4回（すべて破綻）</dd></div>
+    <div><dt>最終停止誤差</dt><dd>平均 0.017 m</dd></div>
+    <div><dt>±20cm達成</dt><dd>16 / 16 ケース</dd></div>
+  </dl>
+</header>
+
+<section>
+  <p class="sec-label">要約</p>
+  <h2>TASCは機能した。しかし学習ループには入れられなかった</h2>
+  <p class="lead col">停止位置制御そのものは設計どおり動き、どんな方策でも±20cm以内に停止させられることを確認した。問題は「TASCをDQNの学習ループに組み込む」ことにあり、報酬の与え方を4通り試したがすべて別々の形で破綻した。最終的にTASCを学習から外し、運転曲線の後処理として適用する構成に落ち着いた。</p>
+
+  <div class="callout good">
+    <h4>最終構成</h4>
+    <p><strong>学習ループ</strong>：TASCは一切介入しない（<code>TASC_ENABLED = False</code>）。観測は30次元に復帰し、学習の力学はTASC導入前の実績ある状態に戻した。</p>
+    <p><strong>後処理</strong>：<code>apply_tasc_to_runcurve.py</code> が走行ログの停止部分だけをTASCの制動パターンで上書きする。実車と同じく「停止位置制御はTASCが担う」という役割分担を、運転曲線上で色分けして明示する。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">検証 01</p>
+  <h2>TASC単体は±20cmを達成できる</h2>
+  <p class="col">まず制動パターンを、停止点から実際の勾配・走行抵抗で逆積分して構築した（物理モデルは <code>train.py</code> と同一）。制限速度70km/hからの制動開始距離は <strong>228.5m</strong>。ここから、精度を決める要素を3つ切り分けた。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>停止精度を決める3要素（進入速度30〜70km/hでの最大誤差）</caption>
+      <thead><tr><th>制御方式</th><th class="num">最大誤差</th><th>所見</th></tr></thead>
+      <tbody>
+        <tr><td>パターンに当たったら制動一択</td><td class="num b">−6.7 m</td><td>勾配で止まりすぎる。追従制御が必須</td></tr>
+        <tr><td>パターン追従（0.1秒判定・先読みなし）</td><td class="num">1.42 m</td><td>作動判定が1ステップ遅れる</td></tr>
+        <tr><td>＋作動判定の先読み</td><td class="num">0.98 m</td><td>—</td></tr>
+        <tr class="hi"><td>＋作動後は0.01秒周期で追従</td><td class="num">0.042 m</td><td>±20cmを達成</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">作動判定の遅れは回復できない。制動は最大減速なので、1ステップ(0.1秒)遅れると最大1.4m行き過ぎてしまう。そのため判定時に「次ステップで進む距離」を先読みする必要がある。</p>
+
+  <h3>停止の保証は「学習」ではなく「上書き」から来る</h3>
+  <p class="col">どのような方策でも停止できるかを、極端なエージェントで確かめた。</p>
+  <div class="tablewrap">
+    <table>
+      <caption>方策非依存性の検証</caption>
+      <thead><tr><th>エージェント</th><th class="num">停止誤差</th></tr></thead>
+      <tbody>
+        <tr><td>常に力行（最悪ケース）</td><td class="num g">+0.019 m</td></tr>
+        <tr><td>常に惰行</td><td class="num g">+0.018 m</td></tr>
+        <tr><td>制限70km/hで巡航</td><td class="num g">+0.009 m</td></tr>
+        <tr><td>ランダム</td><td class="num g">+0.022 m</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">TASCは毎ステップ監視して条件成立時に行動を上書きするため、学習が未収束でもオーバーランは起こらない。この性質は最後まで揺るがなかった。</p>
+</section>
+
+<section>
+  <p class="sec-label">検証 02</p>
+  <h2>4回の試行と、それぞれの破綻</h2>
+  <p class="lead col">TASCを学習ループに入れると、TASC作動中の区間をどう評価するかという問題が生じる。負・正・中立・終了と4通り試したが、すべて別の形で失敗した。</p>
+
+  <div class="try">
+    <div class="no">試行 01</div>
+    <div>
+      <h4>LLM評価をそのまま使う <span class="tag bad">崩壊</span></h4>
+      <p class="setting">TASC区間の評価＝報酬NNの出力のまま</p>
+      <p>報酬NNは駅接近時の連続制動を0.0近くと評価した。そのためTASC制動とクリープ走行（ちんたら運転）が報酬でほとんど区別できず、エージェントは早期減速して這う挙動に落ち込んだ。</p>
+      <div class="ev">TASC制動 llm 0.023 → −0.477/秒　　クリープ llm 0.0 → −0.500/秒　　差わずか0.023</div>
+    </div>
+  </div>
+
+  <div class="try">
+    <div class="no">試行 02</div>
+    <div>
+      <h4>満点1.0を与える <span class="tag bad">搾取</span></h4>
+      <p class="setting">TASC区間の評価＝常に 1.0</p>
+      <p>クリープとの区別はついたが、今度はTASC区間が長いほど得になった。速く突っ込むほど制動時間が延びるため、巡航では0点を取り続けながらTASC区間で稼ぐ挙動が現れた。</p>
+      <div class="ev">70km/h巡航で llm 0.00（−0.5/秒）を続けつつ、TASC区間163歩で +12.7 を獲得</div>
+    </div>
+  </div>
+
+  <div class="try">
+    <div class="no">試行 03</div>
+    <div>
+      <h4>中立0にして、作動時にエピソード終了 <span class="tag bad">Q値発散</span></h4>
+      <p class="setting">TASC区間の評価＝0.5（報酬0）＋ 作動で done</p>
+      <p>制御していない区間を学習から外す狙いだったが、エピソードが駅に到達しなくなった。「作動を避ければエピソードが続く」構造になり、クリープが終了回避の手段になった。</p>
+      <div class="ev">819歩まで伸長（正常は約320歩）　　maxQ 165,467（本来の上限は約200）</div>
+    </div>
+  </div>
+
+  <div class="try">
+    <div class="no">試行 04</div>
+    <div>
+      <h4>中立0のまま、終了は廃止 <span class="tag bad">ジグザグ</span></h4>
+      <p class="setting">TASC区間の評価＝0.5（報酬0）／エピソードは駅到達で終了</p>
+      <p>エピソードは正常に終わるようになったが、Q値の膨張は止まらなかった。3つの行動のQ値がほぼ同一になり、argmaxがネットワークの近似誤差で入れ替わって、1〜4秒周期の力行⇔ブレーキが発生した。</p>
+      <div class="ev">Q値 平均340.7 に対し 1位と2位の差 平均1.23（0.36%）　　22歩でargmaxが10回反転</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">検証 03</p>
+  <h2>根本原因 — 行動が効かない区間が最大化バイアスを溜める</h2>
+  <p class="col">4回の失敗はすべて同じ構造に由来していた。報酬の符号を変えても解決しなかったのは、問題が報酬設計ではなくQ関数の側にあったためである。</p>
+
+  <ol class="chain">
+    <li><strong>TASC作動中は3つの行動がすべて同じ結果になる。</strong>環境が行動を上書きするため、力行・惰行・制動のどれを選んでも次の状態は変わらない。</li>
+    <li><strong>この状態で <code>max</code> を取ると、真値ではなくノイズの最大値を拾う。</strong>行動間に本来の差がないため、ネットワークの近似誤差がそのまま上振れとして残る。
+      <span class="q">行動間の差 3.7 → 1ステップあたり約1.8の過大評価</span></li>
+    <li><strong>駅手前は0.1秒刻みで、割引がほとんど効かない。</strong>177ステップの連鎖にわたってバイアスが累積する。
+      <span class="q">γ = 0.9975 ^ 0.1 = 0.99975　　177 × 1.8 ≒ 320</span></li>
+    <li><strong>本来0のはずのQ値が211まで膨張した。</strong>TASC区間の報酬はすべて0で、その後エピソードは終了する。したがって真のQ値は0である。
+      <span class="q">実測（試行04・cycle 1000）: TASC区間の maxQ 211.1</span></li>
+    <li><strong>膨張が巡航側へ逆伝播し、Q値全体が押し上げられた。</strong>一方で行動の好みを表す差は元の大きさのままなので、相対的に潰れる。
+      <span class="q">Q値 198 → 500　　行動間の差は8〜10のまま＝全体の2%以下</span></li>
+    <li><strong>argmaxがノイズで入れ替わり、実質ランダムな行動選択になった。</strong>1秒ごとにランダムに力行/ブレーキを選べば、それはジグザグ運転そのものである。</li>
+  </ol>
+
+  <h3>なぜ「0点の罰」で修正されなかったのか</h3>
+  <p class="col">ジグザグに対して報酬NNは正しく0.0を出しており、罰は届いていた。しかしQ学習の更新式を見ると、その罰の大きさが問題になる。</p>
+  <div class="formula">Q(s,a) ← r + γ · max Q(s',·)<br>
+         = (−0.5) + 0.99975 × 470<br>
+         = 469.4　　<span style="color:var(--bad)">← 罰の −0.5 は 470 の 0.1%</span></div>
+  <p class="col">体重計が340kgを表示している状態で1.2kgの差を読み取ろうとするようなもので、目盛りの精度が足りない。<strong>正しい報酬が、壊れた伝達経路（Q関数）を通れなかった</strong>というのが4回の失敗に共通する構図である。</p>
+
+  <div class="callout bad">
+    <h4>共通項は「行動がほとんど効かない長い連鎖」</h4>
+    <p>試行01・04ではTASC区間（行動が完全に無効・177歩）、試行03ではクリープ区間（2〜8km/hで行動がほぼ無効・640歩）が、それぞれ同じ役割を果たしていた。TASC導入前は駅手前の制動でも行動が効いていたため、Q値は約65で安定していた。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">最終構成</p>
+  <h2>学習からは外し、運転曲線の後処理として適用する</h2>
+
+  <div class="tablewrap">
+    <table>
+      <caption>変更点</caption>
+      <thead><tr><th>対象</th><th>内容</th></tr></thead>
+      <tbody>
+        <tr><td><code>environment2.py</code></td><td><code>TASC_ENABLED = False</code>。観測を30次元に復帰（パターン余裕の31次元目を削除）。制動パターン構築のコードは後処理から使うため残置</td></tr>
+        <tr><td><code>apex2.py</code></td><td><code>num_states</code> を30に復元、CSVヘッダを43列に復元</td></tr>
+        <tr><td><code>analyze_qnet_coverage.py</code></td><td>30次元に復元</td></tr>
+        <tr class="hi"><td><code>apply_tasc_to_runcurve.py</code></td><td>新規。走行ログの停止部分をTASCの制動パターンで上書きする</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>引き継ぎの規則</h3>
+  <ul class="col">
+    <li><strong>原則</strong>：DQNの軌跡が制動パターンに最初に到達した点で引き継ぐ。実車のTASCが作動する瞬間そのものにあたる。</li>
+    <li><strong>ただし1つ手前から再現する</strong>：走行ログは巡航中1秒刻みのため、到達点は既にパターンを最大19m行き過ぎている可能性がある（69km/hで1秒＝19.2m）。制動は最大減速なので行き過ぎは回復できない。この配慮を入れる前は最大 +4.03m の誤差が残っていた。</li>
+    <li><strong>パターンに達しない場合</strong>：DQNが早く減速しすぎたケースでは、最終減速の開始点まで遡り、その直前のノッチを延長してパターンまで走らせてから制動する。</li>
+  </ul>
+
+  <h3>検証結果</h3>
+  <div class="tablewrap">
+    <table>
+      <caption>16テストケースへの適用（run 20260810160239 / cycle 21750）</caption>
+      <thead><tr><th>指標</th><th class="num">結果</th></tr></thead>
+      <tbody>
+        <tr><td>停止誤差 平均</td><td class="num g">0.017 m</td></tr>
+        <tr><td>停止誤差 最大</td><td class="num g">0.072 m</td></tr>
+        <tr class="hi"><td>±20cm以内</td><td class="num">16 / 16 件</td></tr>
+        <tr><td>引き継ぎ内訳</td><td class="num">パターン到達 8件 / 延長 8件</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">出力は <code>tasc_curves/</code> に、CSV（<code>source</code> 列でDQN区間とTASC区間を識別）とPNG（DQN=赤・TASC=青で色分け）で保存される。</p>
+</section>
+
+<section>
+  <p class="sec-label">教訓</p>
+  <h2>この検証から得られたこと</h2>
+  <ul class="col">
+    <li><strong>エージェントが制御しない区間を強化学習の遷移に混ぜてはいけない。</strong>報酬をどう与えても（負・正・中立）歪みが生じた。混ぜないことが唯一の解だった。</li>
+    <li><strong>報酬設計の問題とQ関数の問題は切り分けて診断する。</strong>今回は報酬側が正しく罰していたにもかかわらず挙動が直らなかった。Q値の絶対値と行動間の差の比を見ることで初めて原因が判明した。</li>
+    <li><strong>Q値のスケールは健全性の指標になる。</strong>本課題の理論上限は約200、正常時は約65である。数百を超えたら発散を疑うべきで、実際に失敗した試行ではいずれも膨張していた。</li>
+    <li><strong>自動制御装置は保証を与えるが、学習は保証しない。</strong>停止精度は「学習の成果」ではなく「上書きの帰結」であり、その切り分けを設計にも説明にも反映させる必要がある。</li>
+  </ul>
+</section>
+
+<footer>
+  Apex-Train 研究記録 ／ 詳細は設計メモ §25〜§30 を参照
+</footer>
+
+</div>

@@ -38,7 +38,7 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 
 ## ディレクトリ構成
 - `input/` — シミュレーション条件の設定CSV（駅位置・速度制限・曲線・勾配・ダイヤ・遅延パターン等）。`track.py`や`environment*.py`が参照する固定データ
-- `data/` — `apex*.py`実行時の学習ログ・重み（`*.weights.h5`）・走行ダイアグラム等の出力先
+- `data/` — `apex*.py`実行時の学習ログ・重み（`*.weights.h5`）・走行ダイアグラム等の出力先。`apex2.py`は各runの直下に`TASC制御/`を作り、テストケースごとに停止部分をTASCの制動で上書きした運転曲線PNG（本編と同一書式）と上書き後のCSVログを併せて出力する（学習ループにはTASCを入れない後処理。詳細は`docs_先行列車対応_設計メモ.md` §30・§31）
 - `評価用csv/` — LLM評価前のシミュレータ走行ログ（`evaluate_csv_with_llm.py`の入力）
 - `評価済ログ/` — LLM評価済みデータセット（`evaluate_csv_with_llm.py`の出力）
 - `train_reward_csv_direct/` — 報酬予測NNの学習に実際に使用するCSV置き場（`train_reward_network*.py`が直接読み込む）

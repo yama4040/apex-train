@@ -218,9 +218,16 @@ class Actor:
             
             priority_correction=(0.1-(min(max(self.env.station_remaining_distance,0.0),0.1)+0.001))*500+1
             next_state, reward, done = self.env.step(action)
-            nest_forbidden_action=self.env.forbidden_action 
-            self.episode_rewards += reward  
-            
+            nest_forbidden_action=self.env.forbidden_action
+            self.episode_rewards += reward
+
+            # 【TASC対応・設計メモ §25】TASC作動中は環境が行動を上書きするため、
+            # リプレイバッファには「実際に実行された行動」を記録する。DQNが選んだ行動を
+            # 記録すると、実際には起きていない遷移をQ学習が学んでしまう。
+            executed = self.env.executed_action
+            if executed is not None:
+                action = int(executed)
+
             transition = (state, action, reward, next_state, done, nest_forbidden_action, self.gamma, priority_correction)
             self.buffer.append(transition)
             self.state = next_state
@@ -497,13 +504,13 @@ class Tester:
             f = open(f"{dir_name}{file_name}_{ci}.csv", "w", newline="")
             writer = csv.writer(f)
             
-            # ▼▼▼【修正】実際のデータ構成（合計43列: raw8 + norm30 + Q3 + step_reward + llm_reward）に合わせた正しいヘッダ ▼▼▼
+            # ▼▼▼【修正】実際のデータ構成（合計44列: raw8 + norm31 + Q3 + step_reward + llm_reward）に合わせた正しいヘッダ ▼▼▼
             header = [
                 # 1. 生の観測値 (raw_state: 8次元)
                 "raw_speed", "raw_stat_dist", "raw_rem_time", "raw_hold_time",
                 "raw_pre_act", "raw_stat_dist_2", "raw_fw_dist", "raw_cbtc_signal",
 
-                # 2. ネットワーク入力値 (normalized_state: 30次元、environment2.pyのnormalized_stateと同順)
+                # 2. ネットワーク入力値 (normalized_state: 31次元、environment2.pyのnormalized_stateと同順)
                 "norm_speed", "norm_stat_dist_wide", "norm_stat_dist_zoom", "norm_rem_time", "norm_hold_time",
                 "norm_pre_act_c", "norm_pre_act_a", "norm_pre_act_d", "norm_fw_dist",
                 "norm_cbtc_signal", "norm_speed_limit", "norm_req_stop_dist", "norm_margin_stop_dist",
@@ -513,6 +520,8 @@ class Tester:
                 "norm_next_limit_dist", "norm_next_limit_val", "norm_prev_notch_duration",
                 # ▼【追加】駅間停車防止の上限速度とモードone-hot（26〜30番目）
                 "norm_target_no_stop", "mode_normal", "mode_delay_recovery", "mode_anti_mid_stop", "mode_spacing",
+                # ▼【追加】TASC制動パターンまでの速度余裕（31番目）
+                "norm_tasc_margin",
 
                 # 3. ネットワークの出力と報酬情報 (5次元)
                 "Q_coast", "Q_accel", "Q_decel", "step_reward", "llm_reward",
@@ -729,7 +738,9 @@ class Tester:
                 # モニター用7列。modeはstep内で推論された運転モード（＝この行の状態に対応）
                 monitor_cols = [
                     current_t, current_position, speed_limit,
-                    fw_position_val, fw_speed_val, modes[-1], int(action),
+                    fw_position_val, fw_speed_val, modes[-1],
+                    # 【TASC対応】実際に実行された行動を記録する（TASC作動中は上書きされるため）
+                    int(env.executed_action) if env.executed_action is not None else int(action),
                     pre_step_gradient, forward_dwell_elapsed_val,
                 ]
                 t_state = [*t_state, *n_state, *qs, reward, *tri_drive_info, *monitor_cols]
@@ -994,4 +1005,4 @@ def main(num_actors, gamma, num_states, time_step=1.0):
                 print("=== 全プロセスの再生成完了 ===")
 
 if __name__ == "__main__":
-    main(num_actors=5, gamma=0.9975, num_states=30, time_step=1.0)
+    main(num_actors=5, gamma=0.9975, num_states=31, time_step=1.0)
