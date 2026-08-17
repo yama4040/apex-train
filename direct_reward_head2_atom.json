@@ -1,0 +1,31 @@
+{
+  "head": "zero_atom",
+  "centers": [
+    0.0,
+    0.1,
+    0.2,
+    0.30000000000000004,
+    0.4,
+    0.5,
+    0.6,
+    0.7000000000000001,
+    0.8,
+    0.9,
+    1.0
+  ],
+  "sigma": 0.07500000000000001,
+  "width": 0.1,
+  "sample_weight": "same",
+  "note": "ビン0が構造ゼロのアトム。予測は E[y]=Σ_{i>=1} f_i c_i（閾値・clip・round不要）",
+  "tag": "_atom",
+  "bins": 10,
+  "sigma_ratio": 0.75,
+  "zero_threshold": 0.05,
+  "state_dim": 53,
+  "mode_dim": 4,
+  "n_train": 30198,
+  "n_test": 7550,
+  "random_state": 42,
+  "monitor": "mae",
+  "trained_at": "2026-08-17T11:58:17"
+}

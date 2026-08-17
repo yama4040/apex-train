@@ -1,0 +1,17 @@
+{
+  "head": "scalar",
+  "centers": null,
+  "sigma": null,
+  "note": "現行 train_reward_network2.py と同一構成（Huber + ゲート合成）",
+  "tag": "_base",
+  "bins": 10,
+  "sigma_ratio": 0.75,
+  "zero_threshold": 0.05,
+  "state_dim": 53,
+  "mode_dim": 4,
+  "n_train": 30198,
+  "n_test": 7550,
+  "random_state": 42,
+  "monitor": "mae",
+  "trained_at": "2026-08-17T11:27:31"
+}
