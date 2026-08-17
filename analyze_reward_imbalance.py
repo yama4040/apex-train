@@ -212,21 +212,32 @@ def predict_combined(tag, X_state, mode_onehot, idx_te):
         return None
     X = np.hstack([scaler.transform(X_state[idx_te]), mode_onehot[idx_te]]).astype(np.float32)
 
-    # 回帰器のヘッド（スカラー回帰 / HL-Gaussian）をマニフェストから判別する。
+    # 回帰器のヘッド（スカラー回帰 / HL-Gaussian）を判別する。
     # 判別規則・読み出し・合成は histogram_loss に一本化してあり、
     # direct_reward_predictor2 の実行時挙動と一致する。
     import histogram_loss as hl
-    head_info = hl.load_head_info(f'direct_reward_manifest{tag}.json'
-                                  if os.path.exists(f'direct_reward_manifest{tag}.json')
-                                  else 'direct_reward_manifest.json')
+    import json as _json
     reg = tf.keras.models.load_model(model_path, compile=False)
     units = int(reg.output_shape[-1])
-    if units != head_info.get('units', 1):
-        print(f"[skip] tag='{tag}': 回帰器の出力次元 {units} がマニフェストのヘッド"
-              f"({head_info.get('head')}, units={head_info.get('units')})と一致しません。")
-        return None
+
+    # 探索順: 比較用ヘッドjson（train_reward_heads.py）→ 本番マニフェスト（tag=''のみ）→ 出力次元から推定
+    head_info = None
+    head_json = f'direct_reward_head2{tag}.json'
+    if os.path.exists(head_json):
+        head_info = _json.load(open(head_json, encoding='utf-8'))
+    elif tag == '':
+        head_info = hl.load_head_info()
+    if head_info is None or units != head_info.get('units', 1 if head_info.get('head') == 'scalar'
+                                                   else len(head_info.get('centers') or [])):
+        if units == 1:
+            head_info = hl.scalar_head_manifest()   # 出力1次元なら旧来のスカラー回帰と断定できる
+        else:
+            print(f"[skip] tag='{tag}': 回帰器の出力次元が {units} ですが、ビン中心を書いた"
+                  f" '{head_json}' がありません。ヘッドを特定できないため評価できません。")
+            return None
     if head_info.get('head') != 'scalar':
-        print(f"[情報] tag='{tag}': 回帰器ヘッド={head_info['head']} / 合成={head_info['composition']}")
+        print(f"[情報] tag='{tag}': 回帰器ヘッド={head_info['head']} / "
+              f"合成={head_info.get('composition', 'hard')} / ビン{units}個")
     reg_p = hl.read_regressor(reg.predict(X, verbose=0), head_info)
     if os.path.exists(gate_path):
         gate = tf.keras.models.load_model(gate_path, compile=False)

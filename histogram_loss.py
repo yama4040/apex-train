@@ -153,14 +153,18 @@ def read_regressor(raw_out, head_info):
 def compose_reward(reg, gate_prob, head_info):
     """回帰値とゲート確率 → 実行時と同一の合成結果。
 
-    soft（HL-Gaussian の既定）: (1 - ゲート確率) * 回帰値
-    hard（旧スカラー回帰）    : ゲート確率>=0.5 なら 0.0、それ以外は clip(0.1, 1.0)
+    soft: (1 - ゲート確率) * 回帰値。閾値の不連続が無い。
+    hard: ゲート確率>=0.5 なら 0.0、それ以外は回帰値。
+
+    hard のときの下限クリップはヘッドで異なる（direct_reward_predictor2 の実装と一致させる）:
+      scalar   … clip(0.1, 1.0)。線形出力は値域外へ出るため下限0.1で潰す必要がある
+      hl_gauss … clip(0.0, 1.0)。softmaxの期待値は既にビン中心の範囲に収まっている
     """
     reg = np.asarray(reg, dtype=np.float64)
+    lo = 0.1 if head_info.get('head') == 'scalar' else 0.0
     if gate_prob is None:
-        return np.clip(reg, 0.0, 1.0) if head_info.get('composition') == 'soft' \
-            else np.clip(reg, 0.1, 1.0)
+        return np.clip(reg, 0.0 if head_info.get('composition') == 'soft' else lo, 1.0)
     gate_prob = np.asarray(gate_prob, dtype=np.float64)
     if head_info.get('composition') == 'soft':
         return np.clip((1.0 - gate_prob) * reg, 0.0, 1.0)
-    return np.where(gate_prob >= 0.5, 0.0, np.clip(reg, 0.1, 1.0))
+    return np.where(gate_prob >= 0.5, 0.0, np.clip(reg, lo, 1.0))
