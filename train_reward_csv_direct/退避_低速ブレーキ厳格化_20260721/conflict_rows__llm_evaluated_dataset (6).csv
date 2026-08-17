@@ -1,0 +1,2 @@
+﻿time,train_id,phase,current_notch,holding_time,prev_notch,prev_notch_duration,speed_limit,signal_speed,current_speed,required_speed,dist_to_next_station,time_to_next_station,req_stop_dist,delay,current_gradient,next_limit_info,next_gradient_info,forward_info,backward_info,reward,reason
+210.09999999999573,Train11,次駅への減速フェーズ（駅手前400m以内）,ブレーキ（減速）中,0.1,惰行,0.1,70.0,70.0,1.5554037118126778,70.0,14.656100988943876,0.0,0.1154782596974247,30.199999999995725,9.2,この先制限速度なし,この先目立った勾配なし,先行列車なし,後続列車なし,1.0,次駅減速フェーズで適切にブレーキを開始し、速度・信号遵守、停止位置も確保できるため高評価とした。

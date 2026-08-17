@@ -1,0 +1,4 @@
+﻿time,train_id,phase,current_notch,holding_time,prev_notch,prev_notch_duration,speed_limit,signal_speed,current_speed,required_speed,dist_to_next_station,time_to_next_station,req_stop_dist,delay,current_gradient,next_limit_info,next_gradient_info,forward_info,backward_info,reward,reason
+361.0,T1,次駅への減速フェーズ（駅手前400m以内）,ブレーキ（減速）中,16.6,惰行,61.1,80.0,80.0,7.05,0.0,4.1,7.5,3.07,0.0,0.0,この先制限速度なし,492m先に下り勾配6.7‰あり,先行列車なし,後続列車なし,1.0,減速フェーズで適切にブレーキをかけ、delta_stopが2m以内で停止位置が確保できており、速度・信号超過やノコギリ運転はなく安全かつ省エネと判断した。
+362.0,T1,次駅への減速フェーズ（駅手前400m以内）,ブレーキ（減速）中,17.6,惰行,61.1,80.0,80.0,4.47,0.0,2.5,6.5,1.33,0.0,0.0,この先制限速度なし,490m先に下り勾配6.7‰あり,先行列車なし,後続列車なし,1.0,ブレーキ中でdelta_stopが1.15mと許容範囲内、速度・信号遵守、ノコギリ運転なしと評価し最高点とした。
+363.0,T1,次駅への減速フェーズ（駅手前400m以内）,ブレーキ（減速）中,18.6,惰行,61.1,80.0,80.0,1.88,0.0,1.6,5.5,0.31,0.0,0.0,この先制限速度なし,489m先に下り勾配6.7‰あり,先行列車なし,後続列車なし,1.0,ブレーキ中でdelta_stopが1.3mと許容範囲内、速度制限・信号遵守、ノコギリ運転なしで適切な減速と判断し最高評価とした。

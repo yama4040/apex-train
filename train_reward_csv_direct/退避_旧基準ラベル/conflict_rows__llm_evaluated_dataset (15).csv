@@ -1,0 +1,2 @@
+﻿time,train_id,phase,current_notch,holding_time,prev_notch,prev_notch_duration,speed_limit,signal_speed,current_speed,required_speed,dist_to_next_station,time_to_next_station,req_stop_dist,delay,current_gradient,next_limit_info,next_gradient_info,forward_info,backward_info,reward,reason
+536,Train11,次駅への減速フェーズ（駅手前400m以内）,ブレーキ（減速）中,1.0,惰行,8.0,70.0,70.0,70.0,70.0,264.5,27.2,254.5018236368305,0.0,0.0,この先制限速度なし,この先目立った勾配なし,先行列車なし,後続列車なし,0.4,ブレーキ開始が必要ブレーキ距離より10 m早く、停止位置が手前になるためエネルギー無駄と評価し、低評価とした。
