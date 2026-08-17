@@ -64,13 +64,24 @@ GRID_ALPHA = 0.25
 
 # ------------------------------------------------------------------ 予測
 def load_head_meta(tag):
-    """direct_reward_head2<tag>.json を読む。無ければ現行のスカラー回帰とみなす。"""
+    """direct_reward_head2<tag>.json を読む。
+
+    本番モデル（tag=''）には比較用のヘッドjsonが無いので、
+    direct_reward_manifest.json の regressor_head へフォールバックする
+    （train_reward_network2.py が HL-Gaussian で学習した本番モデルも正しく評価するため）。
+    どちらも無ければ旧来のスカラー回帰とみなす。
+    """
     path = f'direct_reward_head2{tag}.json'
-    if not os.path.exists(path):
-        return {'head': 'scalar', 'centers': None,
-                'note': f'{path} が無いため現行のスカラー回帰ヘッドとして扱います。'}
-    with open(path, encoding='utf-8') as f:
-        return json.load(f)
+    if os.path.exists(path):
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    if tag == '' and os.path.exists('direct_reward_manifest.json'):
+        with open('direct_reward_manifest.json', encoding='utf-8') as f:
+            info = json.load(f).get('regressor_head')
+        if info:
+            return dict(info, note='direct_reward_manifest.json の regressor_head から読み込み')
+    return {'head': 'scalar', 'centers': None,
+            'note': f'{path} が無いため現行のスカラー回帰ヘッドとして扱います。'}
 
 
 def predict_any(tag, X_state, mode_onehot, idx_te, atom_decision='expect'):
@@ -131,8 +142,12 @@ def predict_any(tag, X_state, mode_onehot, idx_te, atom_decision='expect'):
         if os.path.exists(gate_path):
             gate = tf.keras.models.load_model(gate_path, compile=False)
             gate_p = gate.predict(X, verbose=0).flatten()
-            # 現行 direct_reward_predictor2.predict_reward と同一の合成
-            raw = np.where(gate_p >= 0.5, 0.0, np.clip(reg, 0.1, 1.0))
+            if meta.get('composition') == 'soft':
+                # 本番のHL-Gaussian構成と同一のソフト合成（閾値・clip・丸めなし）
+                raw = np.clip((1.0 - gate_p) * reg, 0.0, 1.0)
+            else:
+                # 旧構成 direct_reward_predictor2.predict_reward と同一のハード合成
+                raw = np.where(gate_p >= 0.5, 0.0, np.clip(reg, 0.1, 1.0))
         else:
             print(f"[注意] tag='{tag}': ゲートが無いため回帰器のみで評価します。")
             gate_p = np.zeros(len(reg))

@@ -77,10 +77,33 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 ### 報酬予測NN（蒸留）の学習・評価
 - `train_reward_network.py` / `train_reward_network2.py` / `train_reward_network3.py` — LLM評価済みデータセットから報酬予測NNを学習（それぞれ旧回帰／回帰／分類）
 - `direct_reward_predictor.py` / `direct_reward_predictor2.py` / `direct_reward_predictor3.py` — 学習済みNNをロードして推論する予測器クラス（各`environment*.py`から利用される）
+- `histogram_loss.py` — **HL-Gaussianの共通モジュール**。ビン中心・打ち切り正規分布の教師・期待値読み出し・ゲートとの合成を一本化し、学習側（`train_reward_network2.py`）と推論側（`direct_reward_predictor2.py`）・解析側で定義が食い違わないようにする
 - `reward_predictor.py` — `RewardWeightPredictor`。環境要素ごとの重み付けを予測する旧方式の予測器（`environment.py`のみが使用）
 - `analyze_reward_nn_vs_llm.py` — LLMラベル分布と3系統のNN出力分布を比較・可視化し、LLM／NNそれぞれの評価の妥当性を検証する
+- `analyze_reward_imbalance.py` — ラベル不均衡による予測バイアスの診断。balanced-MAE・校正直線の傾き・予測std比・真値ビン別バイアス・shot別MAEを算出し、`--tags`で複数モデルを同一分割で並べられる
+- `train_reward_heads.py` / `compare_reward_heads.py` — **出力ヘッド／損失を差し替えた比較専用**の学習・評価ツール。本番モデルを上書きしないので安全に実行でき、新しいヘッドを本番へ入れる前の検証に使う（詳細は`docs/報酬NN出力ヘッド比較レポート.html`）
 - `check_reward_distribution.py` — `train_reward_csv_direct/`内データの報酬分布を可視化
 - `evaluate_result.py` — 個別走行ログCSV（`comp/`）に対する報酬の比較・検証
+
+#### 回帰NNの出力ヘッド（2026-08-17に HL-Gaussian へ移行）
+`train_reward_network2.py`の回帰器は既定で**HL-Gaussianヘッド**（Imani & White, ICML 2018）になった。
+出力を値域ビンのsoftmaxにし、教師を「ラベル中心の打ち切り正規分布」に変換して交差エントロピーで学習する。
+
+- **既定のビン設定** — 核19ビン（幅0.05）＋ 両端に**予備ビン1個ずつ** ＝ 計21ビン、中心 0.05〜1.05、σ=0.0375
+  - 予備ビンは必須。ビン中心をラベル範囲（0.1〜1.0）そのものに置くと端のラベルでガウスの裾が切れ、
+    `y=1.0`の教師期待値が0.963になって端を原理的に当てられなくなる（校正直線の傾きが約0.045低下）
+- **推論時の合成** — `reward = (1 − ゲート確率) × Σ fᵢcᵢ`。ハード閾値・`clip(0.1,1.0)`・`round(_,1)`をすべて撤廃
+  - 旧構成では回帰器の生出力の26.7%が値域外に出て`clip`が破綻を隠していた。softmaxの期待値なら原理的に値域内
+  - `clip`下限0.1と0.1丸めのせいで報酬0.1が実質出力されなかった問題（DQN実走行で0.22%）が解消する
+  - ゲート確率が0.5をまたぐ瞬間に報酬が0↔0.5以上へ飛ぶ不連続が無くなる
+- **ヘッドの判別** — `direct_reward_manifest.json`の`regressor_head`（`head`／`centers`／`composition`）を推論側・解析側が読む。
+  このキーが無い旧マニフェストは従来のスカラー回帰（Huber＋ハード合成＋0.1丸め）として扱われるため、**過去のモデル資産はそのまま動く**
+  - モデルの出力次元とマニフェストのビン数が食い違う場合は起動時に例外を出す（報酬が黙って壊れるのを防ぐ）
+- **旧構成の再現** — `python train_reward_network2.py --head scalar`
+- **ゲート分類器は分離のまま維持** — 単一ヘッドへ統合する案（ゼロアトム）は、真値0.0のMAEが0.017→0.041〜0.062へ悪化したため不採用
+
+**注意**: ヘッドを切り替えたら**必ず`train_reward_network2.py`で再学習**すること。モデル・スケーラ・マニフェストは
+同時に更新されるので、この3点セットの世代を揃えて運用する。
 
 ### 強化学習（QNetwork）の診断・可視化
 - `analyze_qnet_coverage.py` — 学習済み`QNetwork`（`model.py`／25次元入力・3行動出力）の「Qテーブルの埋まり具合」に相当する診断ツール。表形式Q学習ではなく関数近似のため文字通りのテーブルは無いが、「速度 × 駅までの距離」を格子状にスイープした人工状態を`data/<run>/*.weights.h5`にロードした重みで一括推論し、①max Q（過大評価・発散のチェック）②貪欲方策マップ（惰行/力行/ブレーキ）③行動間ギャップ（≒0の領域＝行動を区別できていない未学習に近い領域）の3面ヒートマップを`qnet_analysis/`へ出力する。グリッド2軸以外の23次元は`environment2.py`の`normalized_state`と同一の正規化式で「定時運行・先行列車なし・平坦・制限70km/h」のシナリオ値を埋める（時刻依存の加速フェーズ・路線依存の制限接近フェーズはグリッド再現不可のため対象外）。`--overlay-csv`でTester出力CSV（`comp/`・`data/`配下）の実走行訪問状態を白点で重ね描き、`--pre-action`で直前ノッチのシナリオを変更できる。runごとに実行し駅直前領域の行動間ギャップが育つか（テーブルが埋まるか）を追跡する用途。
@@ -122,14 +145,24 @@ python apex2.py
 python generate_forward_train.py
 python generate_forward_train.py --legacy   # 旧形式（定速走行）のinput/f_train_*.csvを再生成
 
-# 回帰NNの学習（train_reward_csv_direct/のデータを使用）
+# 回帰NNの学習（train_reward_csv_direct/のデータを使用・既定はHL-Gaussianヘッド）
 python train_reward_network2.py
+python train_reward_network2.py --head scalar        # 旧構成（Huber回帰）の再現
+python train_reward_network2.py --bins 19 --guard-bins 1 --sigma-ratio 0.75   # 既定値（明示指定する場合）
 
 # LLMによるデータセット評価（.envにLLM_API_URL/LLM_API_KEYが必要）
 python evaluate_csv_with_llm.py
 
 # NN出力とLLMラベルの分布比較
 python analyze_reward_nn_vs_llm.py
+
+# ラベル不均衡による予測バイアスの診断（複数モデルを同一分割で比較できる）
+python analyze_reward_imbalance.py                   # 本番モデルを診断
+python analyze_reward_imbalance.py --noise-check     # ラベルの既約ノイズ（改善余地の上限）も測る
+
+# 出力ヘッドの比較（本番モデルは上書きしない。新ヘッドを本番へ入れる前の検証用）
+python train_reward_heads.py --variants baseline hl_gauss
+python compare_reward_heads.py --tags _base _hlg
 
 # QNetworkの学習具合（Qテーブルの埋まり具合）を可視化（data/以下の最新重みを自動選択）
 python analyze_qnet_coverage.py --overlay-csv comp/12100_0.csv

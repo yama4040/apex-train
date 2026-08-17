@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 """報酬予測NNの出力ヘッド／損失関数を差し替えた比較用モデルを学習するスクリプト（2026-08-13）
 
-train_reward_network2.py は**一切変更しない**。本スクリプトは幹（128-64-32・BN/Dropout/L2）・
-データ・分割・スケーラ・サンプル重みを現行と揃えたうえで、出力ヘッドと損失だけを差し替えた
-モデルを学習し、analyze_reward_imbalance.py がそのまま読める命名規約で保存する。
+本番の学習経路（train_reward_network2.py）とは独立した**比較専用**のスクリプト。幹（128-64-32・
+BN/Dropout/L2）・データ・分割・スケーラ・サンプル重みを本番と揃えたうえで、出力ヘッドと損失だけを
+差し替えたモデルを学習し、analyze_reward_imbalance.py がそのまま読める命名規約で保存する。
+本番モデル（direct_reward_model2.h5）は上書きしないので、いつでも安全に実行できる。
+
+※2026-08-17: 比較の結果、HL-Gaussian（予備ビン付き）が推奨構成として train_reward_network2.py の
+　既定ヘッドに採用された。ビンと目標分布の実装は histogram_loss.py に一本化してある。
+　本スクリプトは今後も「新しいヘッドを本番へ入れる前に安全に比べる」場として使う。
 
   direct_reward_model2<tag>.h5 / direct_reward_gate2<tag>.h5 / direct_reward_scaler2<tag>.pkl
   ＋ direct_reward_head2<tag>.json（ヘッド種別・ビン中心などのメタ情報。本スクリプト独自）
@@ -36,8 +41,8 @@ train_reward_network2.py は**一切変更しない**。本スクリプトは幹
 使い方:
   python train_reward_heads.py                       # 3系統すべてを学習
   python train_reward_heads.py --variants hl_gauss   # 一部だけ学習
-  python train_reward_heads.py --bins 19             # 非0側のビン数を変える（既定10=ラベル刻みと一致）
-  python train_reward_heads.py --sigma-ratio 1.0     # σ/ビン幅（既定0.75）
+  python train_reward_heads.py --bins 10 --guard-bins 1   # ビン設定を変える（既定19・予備1）
+  python train_reward_heads.py --sigma-ratio 1.0          # σ/ビン幅（既定0.75）
   python train_reward_heads.py --epochs 50           # 動作確認用に短く
 
   学習後の比較は compare_reward_heads.py で行う。
@@ -50,7 +55,6 @@ import datetime
 
 import numpy as np
 import joblib
-from scipy.special import erf
 
 import matplotlib
 matplotlib.use('Agg')  # train_reward_network2.py と同じ理由（qtaggだとSIGABRTで落ちる環境がある）
@@ -65,6 +69,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 import reward_features as rf
+import histogram_loss as hl          # HL-Gaussianの共有モジュール（学習・推論で定義を一致させる）
 import train_reward_network2 as t2   # 読み取り専用で定数・関数を借りる（変更はしない）
 
 RANDOM_STATE = 42
@@ -75,47 +80,19 @@ STOP_PHASE_COL = t2.STOP_PHASE_COL
 CEILING_LABEL_WEIGHT = t2.CEILING_LABEL_WEIGHT   # 2.5
 CEILING_LABEL_THRESHOLD = t2.CEILING_LABEL_THRESHOLD
 
-# 非0ラベルの値域。LLMの出力は 0.1 刻みなので既定ではビン中心がラベル値と一対一に対応する。
-NONZERO_LO, NONZERO_HI = 0.1, 1.0
+# 非0ラベルの値域（共有モジュールの定義を使う）
+NONZERO_LO, NONZERO_HI = hl.NONZERO_LO, hl.NONZERO_HI
 
 VARIANT_TAGS = {'baseline': '_base', 'hl_gauss': '_hlg', 'zero_atom': '_atom'}
 
 
 # ------------------------------------------------------------------ ビンと目標分布
-def make_centers(k):
-    """非0側のビン中心とビン幅を返す。k=10 なら 0.1,0.2,...,1.0（＝ラベル刻みと一致）。"""
-    if k < 2:
-        raise ValueError('--bins は2以上にしてください。')
-    centers = np.linspace(NONZERO_LO, NONZERO_HI, k)
-    width = (NONZERO_HI - NONZERO_LO) / (k - 1)
-    return centers.astype(np.float64), float(width)
-
-
-def gaussian_bin_targets(y, centers, width, sigma):
-    """ラベル y を、中心 centers・幅 width のビン上の打ち切り正規分布へ変換する。
-
-    Imani & White (2018) の HL-Gaussian の p_i:
-        p_i = (F(l_i + w) - F(l_i)) / Z,  F は N(y, sigma^2) のCDF
-    サポートは [centers[0]-w/2, centers[-1]+w/2]。Z は打ち切り分の正規化。
-    """
-    y = np.asarray(y, dtype=np.float64).reshape(-1, 1)
-    edges = np.concatenate([centers - width / 2.0, [centers[-1] + width / 2.0]])  # (k+1,)
-    z = (edges[None, :] - y) / (np.sqrt(2.0) * sigma)
-    cdf = 0.5 * (1.0 + erf(z))
-    p = np.diff(cdf, axis=1)
-    total = p.sum(axis=1, keepdims=True)
-    # サポート外・σが極端に小さい等で総和が0に潰れた行は、最近傍ビンへ全質量を置く（安全弁）
-    bad = (total[:, 0] <= 1e-12)
-    if bad.any():
-        p[bad] = 0.0
-        p[bad, np.abs(centers[None, :] - y[bad]).argmin(axis=1)] = 1.0
-        total[bad] = 1.0
-    return (p / total).astype(np.float32)
-
-
-def expectation(probs, centers):
-    """softmax出力 → ビン中心の期待値。"""
-    return (np.asarray(probs, dtype=np.float64) @ np.asarray(centers, dtype=np.float64)).astype(np.float32)
+# 実装は histogram_loss.py に一本化した（学習側 train_reward_network2.py・
+# 推論側 direct_reward_predictor2.py とビン定義を必ず一致させるため）。
+make_centers = hl.make_centers
+gaussian_bin_targets = hl.gaussian_bin_targets
+expectation = hl.expectation
+make_expected_mae = hl.make_expected_mae
 
 
 # ------------------------------------------------------------------ モデル
@@ -129,20 +106,6 @@ def build_trunk(input_dim, out_units, out_activation):
         Dense(32, kernel_regularizer=l2_reg), BatchNormalization(), Activation('relu'), Dropout(0.1),
         Dense(out_units, activation=out_activation),
     ])
-
-
-def make_expected_mae(centers):
-    """交差エントロピーで学習するヘッドを、baseline と同じ土俵（予測値のMAE）で監視する指標。
-
-    y_true は目標分布なので、その期待値（≒元のラベル）と予測期待値の差を測る。
-    これにより EarlyStopping の基準を全系統で揃えられる。
-    """
-    c = tf.constant(np.asarray(centers, dtype=np.float32))
-
-    def expected_mae(y_true, y_pred):
-        return tf.reduce_mean(tf.abs(tf.reduce_sum(y_pred * c, axis=-1) -
-                                     tf.reduce_sum(y_true * c, axis=-1)))
-    return expected_mae
 
 
 def compile_regressor(model):
@@ -218,9 +181,11 @@ def train_baseline(data, args, gate):
 
 def train_hl_gauss(data, args, gate):
     """提案①：非0行のみで HL-Gaussian（softmax K ビン ＋ ガウス目標のCE）。"""
-    centers, width = make_centers(args.bins)
+    centers, width = make_centers(args.bins, args.guard_bins)
     sigma = args.sigma_ratio * width
-    print(f"\n--- hl_gauss: HL-Gaussian回帰器を学習（K={args.bins} 幅={width:.4f} σ={sigma:.4f}）---")
+    print(f"\n--- hl_gauss: HL-Gaussian回帰器を学習（ビン{len(centers)}個 "
+          f"[{centers[0]:.3f}, {centers[-1]:.3f}] 幅={width:.4f} σ={sigma:.4f} "
+          f"予備ビン={args.guard_bins}）---")
     tf.keras.utils.set_random_seed(RANDOM_STATE)
     d = data
     nz_tr, nz_te = d['y_tr'] > ZERO_THRESHOLD, d['y_te'] > ZERO_THRESHOLD
@@ -228,28 +193,34 @@ def train_hl_gauss(data, args, gate):
     P_te = gaussian_bin_targets(d['y_te'][nz_te], centers, width, sigma)
     sw = build_sample_weights(d['y_tr'][nz_tr], d['stop_tr'][nz_tr],
                               args.sample_weight != 'none', args.sample_weight != 'none')
-    model = compile_histogram(build_trunk(d['X_tr'].shape[1], args.bins, 'softmax'), centers)
+    model = compile_histogram(build_trunk(d['X_tr'].shape[1], len(centers), 'softmax'), centers)
     monitor = 'val_expected_mae' if args.monitor == 'mae' else 'val_loss'
     model.fit(d['X_tr'][nz_tr], P_tr, sample_weight=sw,
               validation_data=(d['X_te'][nz_te], P_te),
               epochs=args.epochs, batch_size=64, callbacks=callbacks(monitor), verbose=args.verbose)
     meta = {'head': 'hl_gauss', 'centers': centers.tolist(), 'sigma': sigma, 'width': width,
-            'sample_weight': args.sample_weight,
+            'guard_bins': args.guard_bins, 'sample_weight': args.sample_weight,
             'note': 'ゲートは baseline と同一のものを共有（回帰の損失だけを変えた統制比較）'}
     return model, gate, meta
 
 
 def train_zero_atom(data, args):
     """提案②：全行で ゼロアトム＋ガウス目標（softmax K+1 ビンのCE）。ゲートなし。"""
-    centers, width = make_centers(args.bins)
+    centers, width = make_centers(args.bins, args.guard_bins)
     sigma = args.sigma_ratio * width
+    if centers[0] <= 1e-9:
+        raise ValueError(
+            f"予備ビンの下端 {centers[0]:.3f} が構造ゼロのアトム(0.0)と重なります。"
+            f"--bins を増やして幅を細かくしてください（例: --bins 19 なら下端0.05）。")
     all_centers = np.concatenate([[0.0], centers])  # ビン0 = 構造ゼロのアトム
-    print(f"\n--- zero_atom: ゼロアトム付きHLを学習（K+1={args.bins + 1} σ={sigma:.4f}）---")
+    n_out = len(all_centers)
+    print(f"\n--- zero_atom: ゼロアトム付きHLを学習（出力{n_out}個 = アトム1 + "
+          f"[{centers[0]:.3f}, {centers[-1]:.3f}]の{len(centers)}ビン σ={sigma:.4f}）---")
     tf.keras.utils.set_random_seed(RANDOM_STATE)
     d = data
 
     def targets(y):
-        P = np.zeros((len(y), args.bins + 1), dtype=np.float32)
+        P = np.zeros((len(y), n_out), dtype=np.float32)
         zero = y <= ZERO_THRESHOLD
         P[zero, 0] = 1.0
         if (~zero).any():
@@ -258,13 +229,13 @@ def train_zero_atom(data, args):
 
     sw = build_sample_weights(d['y_tr'], d['stop_tr'],
                               args.sample_weight != 'none', args.sample_weight != 'none')
-    model = compile_histogram(build_trunk(d['X_tr'].shape[1], args.bins + 1, 'softmax'), all_centers)
+    model = compile_histogram(build_trunk(d['X_tr'].shape[1], n_out, 'softmax'), all_centers)
     monitor = 'val_expected_mae' if args.monitor == 'mae' else 'val_loss'
     model.fit(d['X_tr'], targets(d['y_tr']), sample_weight=sw,
               validation_data=(d['X_te'], targets(d['y_te'])),
               epochs=args.epochs, batch_size=64, callbacks=callbacks(monitor), verbose=args.verbose)
     meta = {'head': 'zero_atom', 'centers': all_centers.tolist(), 'sigma': sigma, 'width': width,
-            'sample_weight': args.sample_weight,
+            'guard_bins': args.guard_bins, 'sample_weight': args.sample_weight,
             'note': 'ビン0が構造ゼロのアトム。予測は E[y]=Σ_{i>=1} f_i c_i（閾値・clip・round不要）'}
     return model, None, meta
 
@@ -321,9 +292,13 @@ def build_arg_parser():
     ap.add_argument('--variants', nargs='*', default=['baseline', 'hl_gauss', 'zero_atom'],
                     choices=list(VARIANT_TAGS), help='学習する系統')
     ap.add_argument('--csv-dir', default='train_reward_csv_direct')
-    ap.add_argument('--bins', type=int, default=10,
-                    help='非0側のビン数。既定10でビン中心が0.1,0.2,...,1.0（ラベル刻みと一致）')
-    ap.add_argument('--sigma-ratio', type=float, default=0.75,
+    ap.add_argument('--bins', type=int, default=hl.DEFAULT_BINS,
+                    help='非0側の核ビン数。19で幅0.05（ラベル0.1刻みは全て中心に一致）。'
+                         '10にすると幅0.1だが --guard-bins が0.0のアトムと衝突するため zero_atom では使えない')
+    ap.add_argument('--guard-bins', type=int, default=hl.DEFAULT_GUARD,
+                    help='ラベル範囲の外側に足す予備ビン数（両端それぞれ）。0にすると端のラベルで'
+                         'ガウス目標の裾が切れ、教師分布の期待値自体がずれる（既定1・0は非推奨）')
+    ap.add_argument('--sigma-ratio', type=float, default=hl.DEFAULT_SIGMA_RATIO,
                     help='σ ÷ ビン幅。Imani は「σ=ビン半径」、実務上は0.75前後が定番')
     ap.add_argument('--sample-weight', choices=['same', 'none'], default='same',
                     help='HL系のサンプル重み。same=現行と同一 / '

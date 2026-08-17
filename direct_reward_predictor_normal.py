@@ -27,12 +27,15 @@ class NormalOnlyRewardPredictor(DirectRewardPredictor):
                  model_path='direct_reward_model_normal.h5',
                  scaler_path='direct_reward_scaler_normal.pkl',
                  gate_path='direct_reward_gate_normal.h5'):
-        # モードNNは使わないので、存在しないパスを渡してロードさせない
+        # モードNNは使わないので、存在しないパスを渡してロードさせない。
+        # マニフェストも専用パスにする（現行系の direct_reward_manifest.json を読むと、
+        # 現行系がHL-Gaussianヘッドのとき通常運転モデル=スカラー回帰と食い違ってしまう）。
         super().__init__(model_path=model_path,
                          scaler_path=scaler_path,
                          gate_path=gate_path,
                          mode_model_path='__none__',
-                         mode_scaler_path='__none__')
+                         mode_scaler_path='__none__',
+                         manifest_path='direct_reward_manifest_normal.json')
         self.last_mode = 'normal'
 
     def _infer_mode(self, x_state_raw):

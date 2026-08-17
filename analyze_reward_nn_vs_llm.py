@@ -319,15 +319,18 @@ def predict_regression(model, scaler, X):
 
 def predict_hurdle(reg_model, gate_model, scaler, X):
     """
-    2段階（ハードル）モデルの合成出力。direct_reward_predictor2.py の推論と完全に一致させる:
-        ゲートP(0.0) >= 0.5 → 0.0
-        それ以外          → 回帰値を [0.1, 1.0] にクリップ
+    2段階（ハードル）モデルの合成出力。direct_reward_predictor2.py の推論と完全に一致させる。
+    回帰器のヘッドは direct_reward_manifest.json から判別する（2026-08-17）:
+        scalar   … ゲートP(0.0) >= 0.5 → 0.0 / それ以外は回帰値を [0.1, 1.0] にクリップ
+        hl_gauss … (1 - ゲートP(0.0)) × ビン中心の期待値（閾値・clip・丸めなし）
     戻り値は (合成後の連続値, 0.1刻みに丸めた値, ゲート確率)
     """
+    import histogram_loss as hl
+    head_info = hl.load_head_info()
     X_scaled = scaler.transform(X)
     gate_prob = gate_model.predict(X_scaled, verbose=0).flatten()
-    reg_raw = reg_model.predict(X_scaled, verbose=0).flatten()
-    composed = np.where(gate_prob >= 0.5, 0.0, np.clip(reg_raw, 0.1, 1.0))
+    reg_raw = hl.read_regressor(reg_model.predict(X_scaled, verbose=0), head_info)
+    composed = hl.compose_reward(reg_raw, gate_prob, head_info)
     rounded = np.round(composed * 10.0) / 10.0
     return composed, rounded, gate_prob
 
@@ -798,15 +801,14 @@ def _onehot_from_active(indices):
 
 
 def composite_eval_reward(X_state, mode_onehot, reg_model, gate_model, scaler):
-    """評価NNの合成出力（direct_reward_predictor2.pyと同一: ゲートP(0.0)>=0.5→0.0、他は[0.1,1.0]）。"""
+    """評価NNの合成出力（direct_reward_predictor2.pyと同一。ヘッドはマニフェストで判別）。"""
+    import histogram_loss as hl
+    head_info = hl.load_head_info()
     Xs = scaler.transform(X_state)
     X = np.hstack([Xs, mode_onehot]).astype(np.float32)
-    reg = reg_model.predict(X, verbose=0).flatten()
-    if gate_model is not None:
-        gate = gate_model.predict(X, verbose=0).flatten()
-        composed = np.where(gate >= 0.5, 0.0, np.clip(reg, 0.1, 1.0))
-    else:
-        composed = np.clip(reg, 0.0, 1.0)
+    reg = hl.read_regressor(reg_model.predict(X, verbose=0), head_info)
+    gate = gate_model.predict(X, verbose=0).flatten() if gate_model is not None else None
+    composed = hl.compose_reward(reg, gate, head_info)
     return np.round(composed * 10.0) / 10.0
 
 

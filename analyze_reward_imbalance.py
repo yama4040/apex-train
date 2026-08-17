@@ -212,16 +212,30 @@ def predict_combined(tag, X_state, mode_onehot, idx_te):
         return None
     X = np.hstack([scaler.transform(X_state[idx_te]), mode_onehot[idx_te]]).astype(np.float32)
 
+    # 回帰器のヘッド（スカラー回帰 / HL-Gaussian）をマニフェストから判別する。
+    # 判別規則・読み出し・合成は histogram_loss に一本化してあり、
+    # direct_reward_predictor2 の実行時挙動と一致する。
+    import histogram_loss as hl
+    head_info = hl.load_head_info(f'direct_reward_manifest{tag}.json'
+                                  if os.path.exists(f'direct_reward_manifest{tag}.json')
+                                  else 'direct_reward_manifest.json')
     reg = tf.keras.models.load_model(model_path, compile=False)
-    reg_p = reg.predict(X, verbose=0).flatten()
+    units = int(reg.output_shape[-1])
+    if units != head_info.get('units', 1):
+        print(f"[skip] tag='{tag}': 回帰器の出力次元 {units} がマニフェストのヘッド"
+              f"({head_info.get('head')}, units={head_info.get('units')})と一致しません。")
+        return None
+    if head_info.get('head') != 'scalar':
+        print(f"[情報] tag='{tag}': 回帰器ヘッド={head_info['head']} / 合成={head_info['composition']}")
+    reg_p = hl.read_regressor(reg.predict(X, verbose=0), head_info)
     if os.path.exists(gate_path):
         gate = tf.keras.models.load_model(gate_path, compile=False)
         gate_p = gate.predict(X, verbose=0).flatten()
-        combined = np.where(gate_p >= 0.5, 0.0, np.clip(reg_p, 0.1, 1.0))
+        combined = hl.compose_reward(reg_p, gate_p, head_info)
     else:
         print(f"[注意] tag='{tag}': ゲートが無いため回帰器のみで評価します。")
         gate_p = np.zeros(len(reg_p))
-        combined = np.clip(reg_p, 0.1, 1.0)
+        combined = hl.compose_reward(reg_p, None, head_info)
     # environment2 が実際に受け取る値は0.1丸め後（predict_reward の round(...,1)）
     return {'raw': combined, 'round': np.round(combined, 1), 'reg': reg_p, 'gate': gate_p}
 

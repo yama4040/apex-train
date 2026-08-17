@@ -1,0 +1,475 @@
+<title>報酬NNの出力ヘッド比較 — 損失関数は「多いラベルへの引っ張られ」を直せるか</title>
+<style>
+  :root{
+    --paper:#F5F6F7; --ink:#17212A; --ink-soft:#5A6670; --ink-faint:#8B959C;
+    --rule:#D8DCE0; --rule-soft:#E7EAEC; --surface:#FFFFFF;
+    --accent:#0E5F70; --good:#2C6A4E; --warn:#8C6318; --bad:#9E382B;
+    --good-wash:#E6EFE9; --warn-wash:#F4EDDF; --bad-wash:#F4E5E2; --accent-wash:#E2EDEF;
+    --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic Medium","Yu Gothic","Noto Sans JP",Meiryo,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Consolas,"Courier New",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#10161B; --ink:#E4E8EB; --ink-soft:#9AA5AD; --ink-faint:#727E86;
+      --rule:#2A343C; --rule-soft:#1E262D; --surface:#171F26;
+      --accent:#4FB3C4; --good:#5FA97E; --warn:#C79A4A; --bad:#D2705F;
+      --good-wash:#182A21; --warn-wash:#2B2417; --bad-wash:#2C1D1A; --accent-wash:#12262B;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#10161B; --ink:#E4E8EB; --ink-soft:#9AA5AD; --ink-faint:#727E86;
+    --rule:#2A343C; --rule-soft:#1E262D; --surface:#171F26;
+    --accent:#4FB3C4; --good:#5FA97E; --warn:#C79A4A; --bad:#D2705F;
+    --good-wash:#182A21; --warn-wash:#2B2417; --bad-wash:#2C1D1A; --accent-wash:#12262B;
+  }
+  :root[data-theme="light"]{
+    --paper:#F5F6F7; --ink:#17212A; --ink-soft:#5A6670; --ink-faint:#8B959C;
+    --rule:#D8DCE0; --rule-soft:#E7EAEC; --surface:#FFFFFF;
+    --accent:#0E5F70; --good:#2C6A4E; --warn:#8C6318; --bad:#9E382B;
+    --good-wash:#E6EFE9; --warn-wash:#F4EDDF; --bad-wash:#F4E5E2; --accent-wash:#E2EDEF;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:16px; line-height:1.85;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto; padding:0 24px 96px}
+  .col{max-width:74ch}
+
+  /* ---- ヘッダ ---- */
+  header{padding:64px 0 28px; border-bottom:2px solid var(--ink)}
+  .eyebrow{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 14px;
+  }
+  h1{
+    font-size:clamp(28px,4.4vw,42px); line-height:1.25; font-weight:700;
+    letter-spacing:.01em; margin:0 0 10px; text-wrap:balance;
+  }
+  .subtitle{font-size:17px; color:var(--ink-soft); margin:0; text-wrap:balance}
+  .meta{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+    gap:2px 28px; margin:30px 0 0; padding:0; list-style:none;
+    font-family:var(--mono); font-size:12.5px;
+  }
+  .meta div{padding:9px 0; border-top:1px solid var(--rule)}
+  .meta dt{color:var(--ink-faint); letter-spacing:.06em; font-size:11px; text-transform:uppercase}
+  .meta dd{margin:2px 0 0; color:var(--ink); font-variant-numeric:tabular-nums}
+
+  /* ---- セクション ---- */
+  section{padding-top:56px}
+  .sec-label{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--ink-faint);
+    padding-bottom:8px; border-bottom:1px solid var(--rule); margin-bottom:24px;
+  }
+  h2{font-size:25px; line-height:1.4; font-weight:700; margin:0 0 14px; text-wrap:balance}
+  h3{font-size:17px; font-weight:700; margin:34px 0 10px; letter-spacing:.01em}
+  p{margin:0 0 15px}
+  strong{font-weight:700}
+  .lead{font-size:17.5px; color:var(--ink-soft)}
+  code{font-family:var(--mono); font-size:.9em; background:var(--rule-soft); padding:1px 5px; border-radius:2px}
+  pre{
+    font-family:var(--mono); font-size:13px; line-height:1.75; background:var(--surface);
+    border:1px solid var(--rule); border-left:3px solid var(--accent);
+    padding:16px 18px; margin:16px 0 8px; overflow-x:auto;
+  }
+  pre code{background:none; padding:0; font-size:inherit}
+
+  /* ---- 判定 ---- */
+  .verdict{display:flex; gap:14px; align-items:baseline; margin:0 0 18px; flex-wrap:wrap}
+  .tag{
+    font-family:var(--mono); font-size:11.5px; font-weight:700; letter-spacing:.12em;
+    text-transform:uppercase; padding:5px 10px; white-space:nowrap;
+  }
+  .tag.good{color:var(--good); background:var(--good-wash)}
+  .tag.warn{color:var(--warn); background:var(--warn-wash)}
+  .tag.bad{color:var(--bad); background:var(--bad-wash)}
+  .tag.info{color:var(--accent); background:var(--accent-wash)}
+
+  /* ---- 要約表 ---- */
+  .summary{display:flex; flex-direction:column; gap:0; margin:8px 0 0}
+  .summary .row{
+    display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start;
+    padding:18px 0; border-top:1px solid var(--rule);
+  }
+  .summary .row:last-child{border-bottom:1px solid var(--rule)}
+  .summary h4{margin:0 0 4px; font-size:16px; font-weight:700}
+  .summary p{margin:0; font-size:14.5px; color:var(--ink-soft)}
+
+  /* ---- 表 ---- */
+  .tablewrap{overflow-x:auto; margin:0 0 8px}
+  table{border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums}
+  caption{
+    text-align:left; font-family:var(--mono); font-size:11.5px; letter-spacing:.08em;
+    color:var(--ink-faint); text-transform:uppercase; padding:0 0 8px;
+  }
+  th,td{padding:9px 14px 9px 0; text-align:left; border-bottom:1px solid var(--rule-soft)}
+  thead th{
+    font-family:var(--mono); font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+    color:var(--ink-faint); font-weight:400; border-bottom:1px solid var(--rule); white-space:nowrap;
+  }
+  td.num,th.num{text-align:right; font-family:var(--mono); padding-right:18px}
+  tr.hi td{background:var(--accent-wash); font-weight:700}
+  tr.hi td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  td.g{color:var(--good); font-weight:700}
+  td.b{color:var(--bad); font-weight:700}
+  .note{font-size:13px; color:var(--ink-faint); margin:6px 0 0; line-height:1.7}
+
+  /* ---- 分布ミニチャート ---- */
+  .dist{display:grid; grid-template-columns:repeat(11,1fr); gap:5px; align-items:end; height:150px; margin:14px 0 6px}
+  .dist .b{display:flex; flex-direction:column; justify-content:flex-end; height:100%; gap:5px}
+  .dist .fill{background:var(--accent); min-height:2px}
+  .dist .fill.peak{background:var(--bad)}
+  .dist .lab{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); text-align:center}
+  .dist-cap{display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--ink-faint)}
+
+  /* ---- 強調ブロック ---- */
+  .callout{border:1px solid var(--rule); border-left:3px solid var(--accent); padding:18px 20px; margin:24px 0; background:var(--surface)}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout.bad{border-left-color:var(--bad)}
+  .callout h4{margin:0 0 8px; font-size:15px; font-weight:700}
+  .callout p{margin:0 0 8px; font-size:14.5px}
+  .callout p:last-child{margin:0}
+
+  /* ---- 推奨構成のスタック図 ---- */
+  .stack{display:flex; flex-direction:column; gap:0; margin:18px 0 8px; max-width:640px}
+  .stack .layer{
+    display:grid; grid-template-columns:minmax(96px,auto) 1fr; gap:18px; align-items:baseline;
+    border:1px solid var(--rule); border-bottom:none; padding:14px 18px; background:var(--surface);
+  }
+  .stack .layer:last-child{border-bottom:1px solid var(--rule)}
+  .stack .layer.keep{border-left:3px solid var(--ink-faint)}
+  .stack .layer.change{border-left:3px solid var(--accent); background:var(--accent-wash)}
+  .stack .role{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+  .stack .body-t{font-size:14.5px}
+  .stack .body-t b{font-weight:700}
+  .stack .body-t span{color:var(--ink-soft); font-size:13.5px}
+
+  ul{margin:0 0 15px; padding-left:1.15em}
+  li{margin-bottom:7px}
+  li::marker{color:var(--ink-faint)}
+
+  footer{margin-top:72px; padding-top:22px; border-top:1px solid var(--rule); font-family:var(--mono); font-size:12px; color:var(--ink-faint)}
+  a{color:var(--accent)}
+  a:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+  @media (max-width:640px){
+    .summary .row{grid-template-columns:1fr}
+    .stack .layer{grid-template-columns:1fr; gap:2px}
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">検証レポート — Apex-Train / 報酬NN</p>
+  <h1>報酬NNの出力ヘッド比較</h1>
+  <p class="subtitle">現行（Huber回帰＋ゲート）と、提案①HL-Gaussian・提案②ゼロアトム統合を同一分割で比較し、「データ数の多いラベルに引っ張られていないか」を検証した結果</p>
+  <dl class="meta">
+    <div><dt>検証日</dt><dd>2026-08-17</dd></div>
+    <div><dt>学習データ</dt><dd>37,748 行</dd></div>
+    <div><dt>テスト分割</dt><dd>7,550 行 (20%・層化)</dd></div>
+    <div><dt>比較した構成</dt><dd>4 通り</dd></div>
+  </dl>
+</header>
+
+<section>
+  <p class="sec-label">要約</p>
+  <h2>損失関数の変更では直らなかった</h2>
+  <p class="lead col">主要4指標のうち3つで現行が最良でした。ただし内訳を見ると、提案①の劣化は実装上の欠陥で説明でき、真の問題は損失関数の外側にあることが分かりました。</p>
+
+  <div class="summary">
+    <div class="row">
+      <span class="tag bad">反証</span>
+      <div>
+        <h4>「データ数の多いラベルに引っ張られている」という仮説</h4>
+        <p>支持されません。<strong>最も学習データが少ない 0.7（約 224 行）がほぼ無バイアス</strong>で、12 倍以上のデータがある 0.9 が最悪級のバイアスでした。バイアスは件数の関数ではなく<strong>値の関数</strong>です。</p>
+      </div>
+    </div>
+    <div class="row">
+      <span class="tag warn">改善せず</span>
+      <div>
+        <h4>提案①（HL-Gaussian）・提案②（ゼロアトム統合）</h4>
+        <p>balanced-MAE・校正の傾き・収縮係数のいずれも現行を上回りませんでした。唯一、頻出ビンへの吸引率だけが 34.3% → 28〜30% に下がりました。</p>
+      </div>
+    </div>
+    <div class="row">
+      <span class="tag info">要再実行</span>
+      <div>
+        <h4>提案①の劣化はビン配置の実装欠陥だった</h4>
+        <p>端のラベルでガウス目標の裾が切れ、<strong>y=1.0 の教師期待値が 0.963</strong> になっていました。校正の傾きへの寄与を計算すると −0.045 で、観測差 −0.053 のほぼ全部を説明します。修正済みのため①のみ再実行の価値があります。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">比較の設計</p>
+  <h2>出力ヘッドと損失だけを差し替えた統制比較</h2>
+  <div class="col">
+    <p>幹（128-64-32・BatchNorm・Dropout 0.3/0.2/0.1・L2 1e-4）、入力（状態 53 次元＋モード one-hot 4 次元）、データ、分割（乱数種 42・0.1 刻み層化）、スケーラ、サンプル重み、Adam の設定をすべて現行と揃え、<strong>出力層と損失関数だけ</strong>を差し替えました。提案①のゲートは現行と同一のものを共有しているため、①の差分は回帰の損失のみに由来します。</p>
+    <p>既存の <code>train_reward_network2.py</code>・<code>direct_reward_predictor2.py</code>・<code>analyze_reward_imbalance.py</code> は変更していません。学習は <code>train_reward_heads.py</code>、評価は <code>compare_reward_heads.py</code> で行い、指標は <code>analyze_reward_imbalance.py</code> のものを再利用しています。</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <caption>比較した 4 構成</caption>
+      <thead><tr><th>タグ</th><th>出力ヘッド</th><th>損失</th><th>推論時の合成</th></tr></thead>
+      <tbody>
+        <tr><td><code>_base</code></td><td>Dense(1, linear) ＋ 別学習のゲート</td><td>Huber(δ=1.0)</td><td>π≥0.5 なら 0.0、他は clip(0.1, 1.0) → 0.1 丸め</td></tr>
+        <tr><td><code>_hlg</code></td><td>Dense(10, softmax) ＋ 同じゲート</td><td>交差エントロピー（ガウス目標）</td><td>同上（回帰値はビン中心の期待値）</td></tr>
+        <tr><td><code>_atom:expect</code></td><td>Dense(11, softmax) 単一ヘッド</td><td>交差エントロピー（アトム＋ガウス目標）</td><td>E[y] = Σ f<sub>i</sub>c<sub>i</sub>（閾値なし）</td></tr>
+        <tr><td><code>_atom:gate</code></td><td>同上（同一モデル）</td><td>同上</td><td>f<sub>0</sub>≥0.5 なら 0.0、他は E[y | y&gt;0]</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">提案②は 1 つのモデルを 2 通りの読み出しで評価しています。ゼロ判定を確率の期待値に溶かすか、現行と同じハード判定にするかが設計上の分岐点になるためです。</p>
+</section>
+
+<section>
+  <p class="sec-label">結果</p>
+  <h2>主要指標</h2>
+
+  <div class="tablewrap">
+    <table>
+      <caption>テスト 7,550 行・全構成で同一分割</caption>
+      <thead>
+        <tr>
+          <th>指標</th>
+          <th class="num">_base<br>現行</th>
+          <th class="num">_hlg<br>提案①</th>
+          <th class="num">_atom:expect<br>提案②</th>
+          <th class="num">_atom:gate<br>提案②</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="hi"><td>balanced-MAE（ビン等重み）</td><td class="num">0.1039</td><td class="num">0.1059</td><td class="num">0.1116</td><td class="num">0.1104</td></tr>
+        <tr><td>校正の傾き slope（1.0 が理想）</td><td class="num g">0.739</td><td class="num">0.686</td><td class="num">0.675</td><td class="num">0.671</td></tr>
+        <tr><td>収縮係数 β（0 が理想）</td><td class="num g">+0.149</td><td class="num">+0.186</td><td class="num">+0.230</td><td class="num">+0.211</td></tr>
+        <tr><td>頻出ビンへの吸引率（低いほど良）</td><td class="num b">34.3%</td><td class="num">30.0%</td><td class="num">29.3%</td><td class="num g">28.3%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">収縮係数 β は、真値ビン別のバイアスを「学習ラベルの頻度重心 − 真値」に回帰した傾き。β=1 なら予測が完全に頻度重心へ潰れていることを意味します。全構成で 0.15〜0.23 と小さく、頻度による引っ張りは弱いことをこの時点で示唆しています。</p>
+</section>
+
+<section>
+  <p class="sec-label">発見 01</p>
+  <h2>バイアスは学習件数と対応していない</h2>
+  <p class="col">検証の主眼だった「多いラベルに引っ張られていないか」を、真値ビン別のバイアスを<strong>学習件数の順に並べ替えて</strong>確認しました。もし頻度による引っ張りが主因なら、件数が少ないラベルほどバイアスが大きくなるはずです。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>学習件数の昇順 — 現行モデル（_base）のバイアス</caption>
+      <thead><tr><th>真値ラベル</th><th class="num">学習件数</th><th class="num">バイアス</th><th>頻度仮説との整合</th></tr></thead>
+      <tbody>
+        <tr class="hi"><td>0.7</td><td class="num">約 224</td><td class="num">−0.006</td><td>最少データなのに<strong>ほぼ無バイアス</strong></td></tr>
+        <tr><td>0.6</td><td class="num">約 480</td><td class="num">−0.002</td><td>2 番目に少ないがほぼ無バイアス</td></tr>
+        <tr><td>0.4</td><td class="num">約 840</td><td class="num">+0.067</td><td>—</td></tr>
+        <tr><td>0.8</td><td class="num">約 1,000</td><td class="num">−0.043</td><td>—</td></tr>
+        <tr><td>0.3</td><td class="num">約 1,040</td><td class="num">+0.106</td><td>—</td></tr>
+        <tr><td>0.5</td><td class="num">約 1,120</td><td class="num">+0.053</td><td>—</td></tr>
+        <tr><td>0.1</td><td class="num">約 1,760</td><td class="num">+0.112</td><td>—</td></tr>
+        <tr class="hi"><td>0.9</td><td class="num">約 3,040</td><td class="num">−0.104</td><td>0.7 の 13 倍のデータで<strong>最悪級</strong></td></tr>
+        <tr><td>0.2</td><td class="num">約 3,600</td><td class="num">+0.092</td><td>—</td></tr>
+        <tr><td>1.0</td><td class="num">約 7,840</td><td class="num">−0.101</td><td>—</td></tr>
+        <tr><td>0.0</td><td class="num">約 10,400</td><td class="num">+0.017</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">学習件数とバイアスは <code>reward_head_frequency_pull.png</code> のパネル (a)、および <code>reward_head_comparison.png</code> のパネル右下から読み取った値（バイアスは ±0.005 程度の読み取り精度）。件数はラベル分布ヒストグラムの 80%（学習側）で、合計は 37,748 行と整合します。</p>
+
+  <div class="callout">
+    <h4>結論：バイアスは件数ではなく「値」の関数</h4>
+    <p>低いラベル（0.1〜0.5）は一様に過大評価され、高いラベル（0.8〜1.0）は一様に過小評価されています。件数との対応はまったくありません。つまり起きているのは<strong>頻度への引っ張りではなく、値の軸に沿った中央への収束</strong>です。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">発見 02</p>
+  <h2>全構成が 0.6〜0.8 へ吸い寄せられている</h2>
+  <p class="col">出力の過剰生産比（予測件数 ÷ 真値件数）を見ると、4 構成すべてが同じ形をしています。1.0 が理想です。</p>
+
+  <div class="dist" role="img" aria-label="過剰生産比。0.7で約6.8倍と突出し、0.1と1.0では1.0を大きく下回る。">
+    <div class="b"><div class="fill" style="height:14%"></div><div class="lab">0.0</div></div>
+    <div class="b"><div class="fill" style="height:7%"></div><div class="lab">0.1</div></div>
+    <div class="b"><div class="fill" style="height:10%"></div><div class="lab">0.2</div></div>
+    <div class="b"><div class="fill" style="height:22%"></div><div class="lab">0.3</div></div>
+    <div class="b"><div class="fill" style="height:25%"></div><div class="lab">0.4</div></div>
+    <div class="b"><div class="fill" style="height:18%"></div><div class="lab">0.5</div></div>
+    <div class="b"><div class="fill" style="height:29%"></div><div class="lab">0.6</div></div>
+    <div class="b"><div class="fill peak" style="height:100%"></div><div class="lab">0.7</div></div>
+    <div class="b"><div class="fill" style="height:26%"></div><div class="lab">0.8</div></div>
+    <div class="b"><div class="fill" style="height:20%"></div><div class="lab">0.9</div></div>
+    <div class="b"><div class="fill" style="height:4%"></div><div class="lab">1.0</div></div>
+  </div>
+  <div class="dist-cap"><span>過剰生産比（現行モデル・棒の高さは 6.8 倍を上限とした比例）</span><span>1.0 が理想</span></div>
+
+  <div class="tablewrap">
+    <table>
+      <caption>特徴的なビンの過剰生産比</caption>
+      <thead><tr><th>真値</th><th class="num">学習件数</th><th class="num">過剰生産比</th><th>意味</th></tr></thead>
+      <tbody>
+        <tr class="hi"><td>0.7</td><td class="num">約 224</td><td class="num">約 6.8 倍</td><td><strong>最少データのラベルを 7 倍近く出している</strong></td></tr>
+        <tr><td>0.6</td><td class="num">約 480</td><td class="num">約 2.0 倍</td><td>—</td></tr>
+        <tr><td>0.8</td><td class="num">約 1,000</td><td class="num">約 1.8 倍</td><td>—</td></tr>
+        <tr><td>0.1</td><td class="num">約 1,760</td><td class="num">約 0.5 倍</td><td>ほとんど出せていない</td></tr>
+        <tr><td>1.0</td><td class="num">約 7,840</td><td class="num">約 0.3 倍</td><td>最多データの一つなのに過少</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout bad">
+    <h4>これは損失関数では動かせない</h4>
+    <p>最も学習件数が少ない 0.7 を 7 倍も出しているという事実は、頻度バイアスでは説明できません。校正曲線が対角線と交わるのが 0.6 付近であることとも整合し、<strong>全構成が 0.6〜0.7 という同一の値へ収束している</strong>ことを示します。</p>
+    <p>これは <code>analyze_reward_imbalance.py</code> 冒頭に記録された 2026-08-13 の結論——ほぼ同一の入力に高低両方のラベルが付いており（ノコギリ運転の減点規則の適用揺れ、適用率が 77.4% と 16.6% の 2 群に二極化）、その条件付き平均が 0.6〜0.7 になる——の直接的な裏付けです。条件付き平均は損失関数を変えても動きません。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">発見 03</p>
+  <h2>提案①の劣化はビン配置の実装欠陥だった</h2>
+  <p class="col">今回の実行では提案①のビン中心をラベル範囲そのもの（0.1〜1.0）に置いていました。このため<strong>端のラベルでガウス目標の裾がサポート外に切られ、教師分布の期待値自体がラベルからずれて</strong>いました。実測値です。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>教師分布（打ち切り正規分布）の期待値 — ビン幅 0.1・σ=0.075</caption>
+      <thead><tr><th>設定</th><th class="num">y=0.1 の期待値</th><th class="num">y=0.2〜0.8</th><th class="num">y=1.0 の期待値</th><th class="num">最大ズレ</th></tr></thead>
+      <tbody>
+        <tr><td>今回の実行（予備ビンなし）</td><td class="num b">0.137</td><td class="num">誤差ゼロ</td><td class="num b">0.963</td><td class="num b">0.0369</td></tr>
+        <tr class="hi"><td>修正後（予備ビン 1・幅 0.05）</td><td class="num">0.1024</td><td class="num">誤差ゼロ</td><td class="num">0.9976</td><td class="num">0.0024</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">中央のラベル（0.2〜0.8）は誤差ゼロで、端の 2 ビンだけが構造的に潰れていました。つまり提案①は<strong>端のラベルを原理的に当てられない設定</strong>で走っていたことになります。</p>
+
+  <h3>この欠陥が観測差のほぼ全部を説明する</h3>
+  <p class="col">打ち切りによる摂動を真値に回帰して校正の傾きへの寄与を計算すると <strong>−0.045</strong>。観測された差は 0.739 → 0.686 の <strong>−0.053</strong> でした。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>真値ビン別 MAE — 提案①は中央で勝ち、端で負けている</caption>
+      <thead><tr><th>真値</th><th class="num">_base</th><th class="num">_hlg</th><th>読み取り</th></tr></thead>
+      <tbody>
+        <tr><td>0.6（希薄）</td><td class="num">0.095</td><td class="num g">0.079</td><td>①が改善</td></tr>
+        <tr><td>0.7（最希薄）</td><td class="num">0.112</td><td class="num g">0.094</td><td>①が改善</td></tr>
+        <tr><td>0.1（端）</td><td class="num g">0.110</td><td class="num b">0.139</td><td>打ち切りの影響</td></tr>
+        <tr><td>1.0（端）</td><td class="num g">0.095</td><td class="num b">0.128</td><td>打ち切りの影響</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <h4>HL-Gaussian の狙いは希薄な中央で実際に効いている</h4>
+    <p>「ガウス目標が隣接ビンへ質量を分配し、希薄ラベル間で統計的強度を共有する」という Imani &amp; White (2018) の主張どおり、<strong>0.6 / 0.7 では現行より 15〜17% 誤差が小さく</strong>なっています。端の劣化は修正可能な実装由来なので、①だけは修正版で引き直す価値があります。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">発見 04</p>
+  <h2>提案②はゼロ判定の専門性を失う</h2>
+  <p class="col">現行の分離ゲートはラベル 0.0 を非常に高い精度で当てています。単一ヘッドに統合すると、この専門性が明確に落ちました。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>真値 0.0 における MAE（ラベル全体の約 35% を占める）</caption>
+      <thead><tr><th>構成</th><th class="num">MAE</th><th>備考</th></tr></thead>
+      <tbody>
+        <tr class="hi"><td>_base（分離ゲート）</td><td class="num">0.017</td><td>現行。極めて良好</td></tr>
+        <tr><td>_hlg（同じゲートを共有）</td><td class="num">0.017</td><td>ゲートが同一なので当然一致</td></tr>
+        <tr><td>_atom:gate（統合・ハード判定）</td><td class="num b">0.041</td><td>約 2.4 倍に悪化</td></tr>
+        <tr><td>_atom:expect（統合・期待値）</td><td class="num b">0.062</td><td>約 3.6 倍に悪化</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">期待値読み出しでは、厳密な 0.0 を出すためにアトムの確率が 1 に極めて近い必要があり、構造的に 0.0 を出しにくい側に倒れます。0.0 がラベルの約 35% を占めるため、これが balanced-MAE を直接押し下げています。</p>
+
+  <div class="callout warn">
+    <h4>統合のメリットはコストに見合わない</h4>
+    <p>提案②の利点は「閾値の不連続を消す」「モデル数を 3 → 2 に減らす」でした。しかし不連続の除去は、現行の 2 段構成のまま合成を <code>(1 − π)·reg</code> にするだけでも達成できます。ゼロ判定精度を 2.4 倍悪化させる必要はありません。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">推奨</p>
+  <h2>推奨するNN構成</h2>
+  <p class="lead col">現行の 2 段構成（ゲート＋回帰）を骨格として維持し、<strong>回帰器の出力ヘッドと損失、および推論時の合成の 2 点だけ</strong>を変更します。幹・入力・ゲートは一切触りません。</p>
+
+  <div class="stack">
+    <div class="layer keep">
+      <span class="role">入力</span>
+      <span class="body-t"><b>変更なし</b> — 状態 53 次元（<code>reward_features.STATE_FEATURE_COLS</code>）＋ モード one-hot 4 次元 = 57 次元<br><span>モード判定も現行のまま（anti_mid_stop のみ NN、他はルール）</span></span>
+    </div>
+    <div class="layer keep">
+      <span class="role">幹</span>
+      <span class="body-t"><b>変更なし</b> — Dense 128 → 64 → 32、各層 BatchNorm ＋ ReLU ＋ Dropout(0.3 / 0.2 / 0.1)、L2 1e-4<br><span>Adam lr=1e-3・clipnorm=1.0</span></span>
+    </div>
+    <div class="layer keep">
+      <span class="role">ゲート</span>
+      <span class="body-t"><b>変更なし・分離を維持</b> — Dense(1, sigmoid)、binary_crossentropy、停車フェーズに重み 3.0<br><span>統合しない。真値 0.0 の MAE 0.017 という現行の性能を保つため</span></span>
+    </div>
+    <div class="layer change">
+      <span class="role">回帰器</span>
+      <span class="body-t"><b>HL-Gaussian に変更</b> — Dense(21, softmax)。ビン中心 0.05〜1.05（幅 0.05・核 19 ＋ 予備ビン 各 1）、σ = 0.0375<br><span>損失は categorical_crossentropy、教師はラベル中心の打ち切り正規分布。予測はビン中心の期待値</span></span>
+    </div>
+    <div class="layer change">
+      <span class="role">合成</span>
+      <span class="body-t"><b>ソフト化</b> — <code>reward = (1 − π(x)) · Σ f<sub>i</sub> c<sub>i</sub></code><br><span>ハード閾値・<code>clip(0.1, 1.0)</code>・<code>round(_, 1)</code> をすべて撤廃。出力はヘッドが有界なので clip 不要</span></span>
+    </div>
+  </div>
+
+  <h3>この構成を選ぶ理由</h3>
+  <ul class="col">
+    <li><strong>希薄な中央値で実測の改善がある</strong> — 0.6 / 0.7 で MAE が 15〜17% 小さい。ガウス目標が隣接ビンへ質量を分配するため、頻度逆数のサンプル重みのようにノイズを増幅せずに希薄ラベルを扱える。</li>
+    <li><strong>出力が構造的に有界</strong> — 現行の線形出力は生の値が [−0.402, +0.937] のように値域外へ出ており（テスト行の 26.7%）、<code>clip</code> が破綻を隠していました。softmax の期待値なら値域外が原理的に発生しません。</li>
+    <li><strong>0.1 刻みの量子化が消える</strong> — 現行の <code>round(_, 1)</code> と <code>clip</code> の下限 0.1 のせいで、報酬 0.1 が実質出力されない状態でした（DQN 実走行で 0.22%）。期待値は連続値です。</li>
+    <li><strong>ゲートの不連続が消える</strong> — 閾値をまたいだ瞬間に報酬が 0 ↔ 0.5 以上へ飛ぶ現象がなくなり、DQN が受け取る報酬が滑らかになります。</li>
+    <li><strong>副産物として分散が得られる</strong> — ヒストグラムの広がりから「NN が自信を持てない状態」を検出でき、駅手前の減速フェーズで評価が 0 に張り付く問題（全ステップの 72%・そのうち 91% が 0.0）の診断に使えます。</li>
+  </ul>
+
+  <h3>採用しない構成</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>構成</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr><td>ゼロアトム統合（提案②）</td><td>ゼロ判定の MAE が 2.4〜3.6 倍に悪化。統合の利点は合成のソフト化だけで得られる</td></tr>
+        <tr><td>ハードラベル 11 分類<br>（<code>train_reward_network3.py</code> の方式）</td><td>Imani &amp; White の HL-OneBin に相当し、論文では ℓ2 回帰より明確に悪い（Test MAE 28.0 対 19.1）。分類化するならガウス目標が必須</td></tr>
+        <tr><td>予備ビンなしの HL-Gaussian</td><td>今回の実行の設定。端のラベルを原理的に当てられない</td></tr>
+        <tr><td>Balanced MSE</td><td>2026-08-13 に試行済み。全指標で悪化</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>実行手順</h3>
+  <pre><code># ① 修正版（予備ビン付き）で回帰器のみ引き直す
+python train_reward_heads.py --variants hl_gauss
+
+# 現行と並べて比較（指標は analyze_reward_imbalance.py のものを再利用）
+python compare_reward_heads.py --tags _base _hlg</code></pre>
+  <p class="note">判定基準は balanced-MAE と校正の傾き slope。これらが現行（0.1039 / 0.739）を上回れば採用、上回らなければ損失関数の線は打ち切りとします。</p>
+</section>
+
+<section>
+  <p class="sec-label">結論</p>
+  <h2>本丸はデータ側にある</h2>
+  <div class="col">
+    <p>推奨構成は「出力が有界になる」「量子化と不連続が消える」「希薄な中央値が少し良くなる」という工学的な改善をもたらしますが、<strong>今回明らかになった主問題を解決するものではありません</strong>。</p>
+    <p>最も学習件数が少ない 0.7 を 7 倍も過剰生産し、バイアスが件数とまったく対応していないという事実は、ほぼ同一の入力に矛盾したラベルが付いていることの帰結です。この条件付き平均は、どのような損失関数を使っても動きません。</p>
+  </div>
+
+  <div class="callout bad">
+    <h4>次の一手の優先順位</h4>
+    <p><strong>1.</strong> ノコギリ運転の減点規則の適用揺れを解消して再ラベルする。適用率が 77.4%（19 ファイル）と 16.6%（26 ファイル）に二極化しており、これが 0.6〜0.7 への収束を生んでいます。</p>
+    <p><strong>2.</strong> <code>python analyze_reward_imbalance.py --noise-check</code> で既約ノイズ（ベイズ誤差の目安）を測る。ラベルを直したとき balanced-MAE をどこまで下げられるかの上限が分かります。</p>
+    <p><strong>3.</strong> 推奨構成への移行は、ラベル整合後に行う。矛盾を含んだデータで手法を評価しても結論が出ないためです。</p>
+  </div>
+</section>
+
+<footer>
+  Apex-Train 研究記録 ／ 学習: <code>train_reward_heads.py</code>・評価: <code>compare_reward_heads.py</code>・指標: <code>analyze_reward_imbalance.py</code> ／ 図: <code>reward_head_comparison.png</code>・<code>reward_head_frequency_pull.png</code>
+</footer>
+
+</div>

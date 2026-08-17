@@ -1,4 +1,4 @@
-"""報酬予測器（二重蒸留の推論側・2026-07-25改修）
+"""報酬予測器（二重蒸留の推論側・2026-07-25改修 / 2026-08-17 HL-Gaussian対応）
 
 RL実行時のパイプライン:
   状態辞書 → 状態特徴量(reward_features) → モードNN(argmax) → mode one-hot
@@ -6,13 +6,32 @@ RL実行時のパイプライン:
 
 特徴量エンジニアリングは reward_features（共有モジュール）に一本化し、学習側と一致させる。
 モデルが無い場合は0.0（後方互換）。モードNNが無い場合は mode=normal 固定で動作する。
+
+回帰器のヘッドは direct_reward_manifest.json の regressor_head で判別する（2026-08-17）。
+
+  hl_gauss（推奨・現行の学習既定）:
+      回帰器の出力は値域ビンのsoftmax。予測はビン中心の期待値で、合成は
+          reward = (1 - ゲート確率) * Σ f_i c_i
+      ハード閾値・clip・0.1丸めをいずれも使わない。
+      ・出力がsoftmaxの期待値なので原理的に値域内（旧スカラー回帰は生出力の26.7%が値域外で、
+        clipが破綻を隠していた）
+      ・clip下限0.1と0.1丸めが無くなるので、報酬0.1が実質出力されない問題が解消する
+      ・ゲート確率が0.5をまたいだ瞬間に報酬が0↔0.5以上へ飛ぶ不連続が無くなる
+
+  scalar（旧構成・マニフェストにヘッド情報が無い場合もこちら）:
+      従来どおり「ゲート確率>=0.5なら0.0、それ以外は clip(0.1,1.0) して0.1丸め」。
+      過去のモデル資産をそのまま読めるよう後方互換で残している。
+
+戻り値は常に 0.0〜1.0 のスカラーで、environment2.py 側の扱いは変わらない。
 """
 import os
+import json
 import numpy as np
 import tensorflow as tf
 import joblib
 
 import reward_features as rf
+import histogram_loss as hl
 
 # 遅延回復モードの判定閾値[km/h]（設計メモ§19）。
 # required_speed は speed_limit で頭打ちになるため、制限との差がこの値以下なら「びたづき」＝
@@ -30,11 +49,17 @@ class DirectRewardPredictor:
                  scaler_path='direct_reward_scaler2.pkl',
                  gate_path='direct_reward_gate2.h5',
                  mode_model_path='mode_model.h5',
-                 mode_scaler_path='mode_scaler.pkl'):
+                 mode_scaler_path='mode_scaler.pkl',
+                 manifest_path='direct_reward_manifest.json'):
         self.is_loaded = False
         self.model = self.gate_model = self.scaler = None
         self.mode_model = self.mode_scaler = None
         self.last_mode = 'normal'
+        # 回帰器ヘッド（マニフェストが無ければ旧来のスカラー回帰として扱う＝後方互換）
+        self.head = 'scalar'
+        self.composition = 'hard'
+        self.bin_centers = None
+        self._load_head_manifest(manifest_path)
         self.state_dim = len(rf.STATE_FEATURE_COLS)
         # 遅延回復のルール判定で参照する特徴量の位置（_infer_mode で使用）
         self._idx_required_speed = rf.STATE_FEATURE_COLS.index('required_speed')
@@ -47,7 +72,11 @@ class DirectRewardPredictor:
 
         self.model = tf.keras.models.load_model(model_path, compile=False)
         self.scaler = joblib.load(scaler_path)
+        self._check_head_matches_model()
         self.is_loaded = True
+        if self.head == 'hl_gauss':
+            print(f"[報酬NN] HL-Gaussianヘッド: ビン{len(self.bin_centers)}個 "
+                  f"[{self.bin_centers[0]:.3f}, {self.bin_centers[-1]:.3f}] / 合成={self.composition}")
 
         n_state = getattr(self.scaler, 'n_features_in_', self.state_dim)
         if n_state != self.state_dim:
@@ -91,6 +120,54 @@ class DirectRewardPredictor:
                 self.predict_mode_fn = predict_mode_fn
         else:
             print(f"[Warning] {mode_model_path}/{mode_scaler_path} が見つかりません。mode=normal 固定で動作します。")
+
+    def _load_head_manifest(self, manifest_path):
+        """マニフェストから回帰器のヘッド種別とビン中心を読む。
+
+        学習側（train_reward_network2.py）が書いた regressor_head をそのまま使うことで、
+        ビン中心の定義が学習・推論で食い違って報酬が静かにずれる事故を防ぐ。
+        """
+        if not os.path.exists(manifest_path):
+            print(f"[Info] {manifest_path} が無いため、回帰器を旧来のスカラー回帰として扱います。")
+            return
+        try:
+            with open(manifest_path, encoding='utf-8') as f:
+                info = json.load(f).get('regressor_head')
+        except Exception as e:
+            print(f"[Warning] {manifest_path} を読めませんでした（{e}）。スカラー回帰として扱います。")
+            return
+        if not info:
+            # 2026-08-17より前のマニフェストにはヘッド情報が無い＝スカラー回帰
+            return
+        self.head = info.get('head', 'scalar')
+        self.composition = info.get('composition', 'hard')
+        if self.head == 'hl_gauss':
+            centers = info.get('centers')
+            if not centers:
+                # 中心が保存されていない場合はビン設定から復元する
+                centers, _ = hl.make_centers(info.get('bins', hl.DEFAULT_BINS),
+                                             info.get('guard_bins', hl.DEFAULT_GUARD))
+                centers = np.asarray(centers)
+            self.bin_centers = np.asarray(centers, dtype=np.float32)
+
+    def _check_head_matches_model(self):
+        """モデルの出力次元とマニフェストのヘッド情報が食い違っていないか検証する。
+
+        マニフェストだけ更新してモデルを差し替え忘れる（またはその逆）と、報酬が
+        黙って壊れたまま学習が進んでしまうため、起動時に必ず突き合わせる。
+        """
+        units = int(self.model.output_shape[-1])
+        if self.head == 'hl_gauss':
+            if self.bin_centers is None or units != len(self.bin_centers):
+                raise ValueError(
+                    f"回帰器の出力次元({units})とマニフェストのビン数"
+                    f"({0 if self.bin_centers is None else len(self.bin_centers)})が一致しません。"
+                    f"direct_reward_model2.h5 と direct_reward_manifest.json の世代を揃えてください"
+                    f"（train_reward_network2.py で再学習すると両方が更新されます）。")
+        elif units != 1:
+            raise ValueError(
+                f"マニフェストはスカラー回帰ヘッドですが、回帰器の出力次元は{units}です。"
+                f"direct_reward_manifest.json が古い可能性があります。")
 
     def _infer_mode(self, x_state_raw):
         """状態特徴量(1,state_dim) → (mode one-hot(1,MODE_DIM), mode文字列)。
@@ -144,14 +221,28 @@ class DirectRewardPredictor:
             X = np.hstack([x_state_scaled, mode_oh]).astype(np.float32)
             x_tensor = tf.convert_to_tensor(X, dtype=tf.float32)
 
+            out = self.predict_fn(x_tensor).numpy()[0]
+            zero_prob = (float(self.predict_gate_fn(x_tensor).numpy()[0][0])
+                         if self.gate_model is not None else 0.0)
+
+            if self.head == 'hl_gauss':
+                # ビン中心の期待値。softmaxの重み付き平均なので必ず [centers[0], centers[-1]] 内。
+                reg_value = float(np.dot(out, self.bin_centers))
+                if self.composition == 'soft' and self.gate_model is not None:
+                    # ハードルモデルの期待値。閾値をまたぐ不連続が無く、clip・丸めも不要。
+                    value = (1.0 - zero_prob) * reg_value
+                elif self.gate_model is not None:
+                    value = 0.0 if zero_prob >= 0.5 else reg_value
+                else:
+                    value = reg_value
+                return float(min(max(value, 0.0), 1.0))
+
+            # --- 旧構成（スカラー回帰）: 従来の合成をそのまま維持する ---
+            reg_value = float(out[0])
             if self.gate_model is not None:
-                zero_prob = float(self.predict_gate_fn(x_tensor).numpy()[0][0])
                 if zero_prob >= 0.5:
                     return 0.0
-                reg_value = float(self.predict_fn(x_tensor).numpy()[0][0])
                 return round(min(max(reg_value, 0.1), 1.0), 1)
-
-            reg_value = float(self.predict_fn(x_tensor).numpy()[0][0])
             return round(reg_value, 1)
         except Exception as e:
             print(f"[推論例外発生] {e}")
