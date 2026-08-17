@@ -34,30 +34,33 @@ from actions import Actions
 from required_speed import calculate_required_speed, brake_stop_distance_m, calculate_no_stop_target_speed
 import apply_tasc_to_runcurve as tasc_util   # 学習後の運転曲線にTASC制動を上書きする後処理
 
-# 先行列車の走行パターンCSV（全10種: low50 ＋ delay{0,5,10}×stop{30,45,60}）。
-# Actor（学習）・Tester（検証）で共有し、駅間停車防止モードの塞ぎシナリオを網羅する。
-ALL_F_TRAIN_CSVS = [
-    "input/f_train_low50.csv",
-    "input/f_train_delay0_stop30.csv",
-    "input/f_train_delay0_stop45.csv",
-    "input/f_train_delay0_stop60.csv",
-    "input/f_train_delay5_stop30.csv",
-    "input/f_train_delay5_stop45.csv",
-    "input/f_train_delay5_stop60.csv",
-    "input/f_train_delay10_stop30.csv",
-    "input/f_train_delay10_stop45.csv",
-    "input/f_train_delay10_stop60.csv",
-]
+# ▼【変更 2026-08-14】先行列車を「惰行ポイント方式」のパターンに全面変更した
+#   （生成は generate_forward_train.py、実体は input/f_train/coast{V}_stop{D}.csv）。
+#   先行列車も自列車と同じ「力行 → 惰行ポイントVまで到達 → 惰行 → 駅に向かって制動」の
+#   省エネ運転をしているものとして扱う。V=65 は generate_standard_curve.py の標準運転曲線
+#   （定時180秒・省エネ最適）と一致する。
+#
+#   Actor（学習）: 惰行ポイントを 40〜65km/h の範囲からランダムに選ぶ（1km/h刻み）。
+#   Tester（検証）: V=65（先行が標準運転曲線で走ったパターン）と V=50（標準より遅い運転）。
+#
+#   先行列車の出発遅延はCSVでは表現せず（全パターンとも t=0 出発）、
+#   「出発間隔 headway ＝ 標準出発間隔120秒 − 先行遅延」に換算して time_offset で与える。
+STD_DEPARTURE_INTERVAL = 120.0   # 羽前成田の標準列車出発間隔[秒]
+F_TRAIN_DWELL_TIMES = [30, 45, 60]        # 先行列車の次駅（白兎）での停車時間[秒]
+F_TRAIN_COAST_SPEEDS_TRAIN = list(range(40, 66))  # 学習時の惰行ポイント[km/h]（ランダム選択）
+F_TRAIN_COAST_SPEEDS_TEST = [65, 50]              # 検証時の惰行ポイント[km/h]
 
 
-def parse_forward_train_delay(csv_path):
-    """先行CSVのファイル名から先行列車の出発遅延[秒]を取り出す（例: f_train_delay10_stop60 -> 10.0）。
-    low50 等で遅延指定が無い場合は0.0を返す。"""
-    if not csv_path:
-        return 0.0
-    import re
-    m = re.search(r"delay(\d+)", csv_path)
-    return float(m.group(1)) if m else 0.0
+def f_train_csv(coast_speed, dwell_time_sec):
+    """惰行ポイントV[km/h]・次駅停車時間D[s]に対応する先行列車CSVのパスを返す
+    （generate_forward_train.py の命名規約と共有）。"""
+    return f"input/f_train/coast{int(coast_speed)}_stop{int(dwell_time_sec)}.csv"
+
+
+# Actorがランダム選択する先行列車CSVの全候補（惰行ポイント26種 × 次駅停車時間3種 = 78種）
+ALL_F_TRAIN_CSVS = [f_train_csv(v, d)
+                    for v in F_TRAIN_COAST_SPEEDS_TRAIN
+                    for d in F_TRAIN_DWELL_TIMES]
 
 
 # 運転モード→運転曲線の色（PNGでモード切替を視認するため）。
@@ -283,8 +286,8 @@ class Actor:
         for var, weight in zip(self.q_network.variables, current_weights):
             var.assign(weight)
 
-        # ▼【変更 2026-07-23】先行遅延シナリオ（delay5/10）を含む全10種を使用し、
-        #   駅間停車防止モードの塞ぎ状況を学習させる。
+        # ▼【変更 2026-08-14】先行列車は惰行ポイント方式（40〜65km/hからランダム）×
+        #   次駅停車時間[30,45,60]秒の全78種からランダムに選ぶ。
         f_train_csv_list = ALL_F_TRAIN_CSVS
 
         r = random.random()
@@ -298,8 +301,15 @@ class Actor:
         else:
             # 先行列車あり（位置オフセットの代わりに time_offset を渡す）
             random_csv = random.choice(f_train_csv_list)
-            self.state = self.env.reset(11, ego_delay, 1.0, fowerd_train_time_offset=headway, fowerd_train_controls=random_csv)
-            
+            # ▼【変更 2026-08-14】先行遅延をTesterと同じheadway換算モデルで明示指定する。
+            #   新CSVはファイル名に delayN を持たない（＝全パターン t=0 出発、遅延はheadwayで表現）ため、
+            #   指定しないと environment2 側のファイル名パースが常に0を返し、
+            #   Tester（120−headway）と学習時とで forward_train_delay の意味がずれてしまう。
+            forward_delay = max(0.0, STD_DEPARTURE_INTERVAL - headway)
+            self.state = self.env.reset(11, ego_delay, 1.0, fowerd_train_time_offset=headway,
+                                        fowerd_train_controls=random_csv,
+                                        forward_train_delay=forward_delay)
+
         self.episode_rewards = 0
         done = False
         
@@ -543,12 +553,13 @@ class Tester:
         os.makedirs(llm_dir, exist_ok=True)
         # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-        # ▼【変更 2026-07-26】テストパターン再定義。
+        # ▼【変更 2026-08-14】テストパターン再定義。
         #   ・通常（遅延なし・先行なし）
         #   ・先行なし × 自列車遅延[15,30,60]
-        #   ・先行あり × 先行遅延[0,30,60,90] × 次駅停車[30,45,60]、自列車遅延なし。
-        #     先行遅延は「羽前成田の標準出発間隔120秒」から headway = 120 − 先行遅延 に換算し、
-        #     通常走行の先行CSV（delay0_stop{M}）を流用する（新CSV不要・headway換算モデル）。
+        #   ・先行あり × 出発間隔[120,100,80]秒 × 次駅停車[30,45,60]秒 × 先行の運転パターン
+        #     （惰行ポイント65km/h＝標準運転曲線 / 50km/h＝標準より遅い運転）、自列車遅延なし。
+        #     出発間隔は羽前成田の標準出発間隔120秒からの短縮ぶんが先行の出発遅延に相当する
+        #     （120→遅延0秒／100→遅延20秒／80→遅延40秒。headway換算モデル）。
         test_cases = []
         test_cases.append({"delay": 0.0, "f_train_csv": None, "headway": None, "forward_delay": 0.0,
                            "forward_dwell": None, "desc": "Sim1_Normal"})
@@ -556,14 +567,15 @@ class Tester:
             test_cases.append({"delay": ego, "f_train_csv": None, "headway": None, "forward_delay": 0.0,
                                "forward_dwell": None, "desc": f"Sim2_EgoDelay{int(ego)}s"})
 
-        STD_DEPARTURE_INTERVAL = 120.0  # 羽前成田の標準列車出発間隔[秒]
-        for f_delay in [0.0, 30.0, 60.0, 90.0]:
-            hw = STD_DEPARTURE_INTERVAL - f_delay  # 先行遅延ぶんheadwayが縮む
-            for stop in [30, 45, 60]:
-                csv_path = f"input/f_train_delay0_stop{stop}.csv"
-                test_cases.append({"delay": 0.0, "f_train_csv": csv_path, "headway": hw, "forward_delay": f_delay,
-                                   "forward_dwell": stop,
-                                   "desc": f"Sim3_Fdelay{int(f_delay)}_stop{stop}_hw{int(hw)}"})
+        for coast in F_TRAIN_COAST_SPEEDS_TEST:
+            for hw in [120.0, 100.0, 80.0]:
+                f_delay = STD_DEPARTURE_INTERVAL - hw  # 出発間隔の短縮ぶん＝先行の出発遅延
+                for stop in F_TRAIN_DWELL_TIMES:
+                    test_cases.append({"delay": 0.0, "f_train_csv": f_train_csv(coast, stop), "headway": hw,
+                                       "forward_delay": f_delay, "forward_dwell": stop,
+                                       "forward_coast_speed": coast,
+                                       "desc": f"Sim3_Coast{int(coast)}_hw{int(hw)}"
+                                               f"_Fdelay{int(f_delay)}_stop{stop}"})
 
         full_reward = 0
         tc0_cumulative_reward = 0 
@@ -652,6 +664,8 @@ class Tester:
                     "forward_delay": float(forward_train_delay_val),
                     "forward_dwell": tc.get("forward_dwell"),
                     "headway": (float(tc["headway"]) if tc["headway"] is not None else None),
+                    # 先行の惰行ポイント[km/h]（65=標準運転曲線相当 / 50=標準より遅い運転。先行なしはNone）
+                    "forward_coast_speed": tc.get("forward_coast_speed"),
                     "f_train_csv": tc["f_train_csv"],
                     "has_forward_train": env.fowerd_train is not None,
                     "departure_station": {

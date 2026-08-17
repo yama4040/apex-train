@@ -443,6 +443,9 @@ def format_case_title(runs: list) -> str:
                 bits.append(f"駅停車時間{meta['forward_dwell']:.0f}秒")
             if meta.get("headway") is not None:
                 bits.append(f"出発間隔{meta['headway']:.0f}秒")
+            # 先行の運転パターン（惰行ポイント）。65km/hが標準運転曲線相当
+            if meta.get("forward_coast_speed") is not None:
+                bits.append(f"先行惰行{meta['forward_coast_speed']:.0f}km/h")
             body = f"{bits[0]}（{'，'.join(bits[1:])}）" if len(bits) > 1 else bits[0]
         else:
             body = "先行列車なし"

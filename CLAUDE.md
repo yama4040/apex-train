@@ -38,6 +38,7 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 
 ## ディレクトリ構成
 - `input/` — シミュレーション条件の設定CSV（駅位置・速度制限・曲線・勾配・ダイヤ・遅延パターン等）。`track.py`や`environment*.py`が参照する固定データ
+- `input/f_train/` — 先行列車の走行パターンCSV（惰行ポイント方式・`coast{V}_stop{D}.csv`）。`generate_forward_train.py`が生成し、`apex2.py`のActor（学習）／Tester（検証）が読み込む
 - `data/` — `apex*.py`実行時の学習ログ・重み（`*.weights.h5`）・走行ダイアグラム等の出力先。`apex2.py`は各runの直下に`TASC制御/`を作り、テストケースごとに停止部分をTASCの制動で上書きした運転曲線PNG（本編と同一書式）と上書き後のCSVログを併せて出力する（学習ループにはTASCを入れない後処理。詳細は`docs_先行列車対応_設計メモ.md` §30・§31）
 - `評価用csv/` — LLM評価前のシミュレータ走行ログ（`evaluate_csv_with_llm.py`の入力）
 - `評価済ログ/` — LLM評価済みデータセット（`evaluate_csv_with_llm.py`の出力）
@@ -67,7 +68,7 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 - `actions.py` — 行動定義（`coasting`＝惰行／`acceleration`＝加速／`deceleration`＝減速）
 - `segment_tree.py` — 優先度付き経験再生用の`SumTree`実装
 - `required_speed.py` — 必要速度（巡航速度）・ブレーキ停止距離の算出ロジック。`evaluate_csv_with_llm.py`（LLM評価プロンプト生成）と`environment2.py`/`environment3.py`（NN学習・推論）の両方から参照され、算出方法を一致させるための共通モジュール
-- `generate_forward_train.py` — 先行列車用の走行制御パターンCSV（`input/f_train_*.csv`）を生成するスクリプト
+- `generate_forward_train.py` — 先行列車用の走行パターンCSV（`input/f_train/coast{V}_stop{D}.csv`）を生成するスクリプト。先行列車も自列車と同じ省エネ運転（**惰行ポイント方式**: 出発→惰行ポイントV[km/h]まで力行→惰行→駅に向かって制動→次駅停車→再出発）をしているものとして扱う。V=65が`generate_standard_curve.py`の標準運転曲線と一致し（白兎に181秒で到着）、V=50は標準より遅い運転。この駅間は白兎手前が上り勾配のため惰行のみで駅に届くのはV≒62km/h以上に限られ、V<65では「惰行を続けても制動開始点に届かない」と判定した時点でVまで再加速して駅間停車を避ける（届くと判定した後は再加速しないので、最後の「Vで惰行して駅に向かって減速」フェーズはVによらず必ず現れる）。停止位置誤差は全78パターンで0.00m。先行の出発遅延はCSVでは表現せず、`apex2.py`側で出発間隔（headway）に換算して与える。旧形式（定速走行・`input/f_train_*.csv`、`apex.py`/`apex3.py`が参照）は`--legacy`で再生成できる。詳細は`docs_先行列車対応_設計メモ.md` §32
 
 ### LLMによるデータセット作成
 - `evaluate_csv_with_llm.py` — `評価用csv/`内の走行ログをLLM APIに送り、ノッチ操作の評価（報酬値・理由）を取得して`評価済ログ/`に出力
@@ -116,6 +117,10 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 ```bash
 # 回帰NNを報酬関数として使うApex DQN学習（本研究で基本的に使用）
 python apex2.py
+
+# 先行列車の走行パターンCSVの生成（惰行ポイント40〜65km/h × 次駅停車[30,45,60]秒の78種）
+python generate_forward_train.py
+python generate_forward_train.py --legacy   # 旧形式（定速走行）のinput/f_train_*.csvを再生成
 
 # 回帰NNの学習（train_reward_csv_direct/のデータを使用）
 python train_reward_network2.py
