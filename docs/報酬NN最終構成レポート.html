@@ -1,0 +1,447 @@
+<title>報酬予測NNの最終構成 — 採用した構成と「高頻度値でLossを下げている」仮説の検証</title>
+<style>
+  :root{
+    --paper:#F5F6F7; --ink:#17212A; --ink-soft:#5A6670; --ink-faint:#8B959C;
+    --rule:#D8DCE0; --rule-soft:#E7EAEC; --surface:#FFFFFF;
+    --accent:#0E5F70; --good:#2C6A4E; --warn:#8C6318; --bad:#9E382B;
+    --good-wash:#E6EFE9; --warn-wash:#F4EDDF; --bad-wash:#F4E5E2; --accent-wash:#E2EDEF;
+    --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic Medium","Yu Gothic","Noto Sans JP",Meiryo,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Consolas,"Courier New",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#10161B; --ink:#E4E8EB; --ink-soft:#9AA5AD; --ink-faint:#727E86;
+      --rule:#2A343C; --rule-soft:#1E262D; --surface:#171F26;
+      --accent:#4FB3C4; --good:#5FA97E; --warn:#C79A4A; --bad:#D2705F;
+      --good-wash:#182A21; --warn-wash:#2B2417; --bad-wash:#2C1D1A; --accent-wash:#12262B;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#10161B; --ink:#E4E8EB; --ink-soft:#9AA5AD; --ink-faint:#727E86;
+    --rule:#2A343C; --rule-soft:#1E262D; --surface:#171F26;
+    --accent:#4FB3C4; --good:#5FA97E; --warn:#C79A4A; --bad:#D2705F;
+    --good-wash:#182A21; --warn-wash:#2B2417; --bad-wash:#2C1D1A; --accent-wash:#12262B;
+  }
+  :root[data-theme="light"]{
+    --paper:#F5F6F7; --ink:#17212A; --ink-soft:#5A6670; --ink-faint:#8B959C;
+    --rule:#D8DCE0; --rule-soft:#E7EAEC; --surface:#FFFFFF;
+    --accent:#0E5F70; --good:#2C6A4E; --warn:#8C6318; --bad:#9E382B;
+    --good-wash:#E6EFE9; --warn-wash:#F4EDDF; --bad-wash:#F4E5E2; --accent-wash:#E2EDEF;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:16px; line-height:1.85;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto; padding:0 24px 96px}
+  .col{max-width:74ch}
+
+  header{padding:64px 0 28px; border-bottom:2px solid var(--ink)}
+  .eyebrow{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 14px;
+  }
+  h1{
+    font-size:clamp(28px,4.4vw,42px); line-height:1.25; font-weight:700;
+    letter-spacing:.01em; margin:0 0 10px; text-wrap:balance;
+  }
+  .subtitle{font-size:17px; color:var(--ink-soft); margin:0; text-wrap:balance}
+  .meta{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+    gap:2px 28px; margin:30px 0 0; padding:0; list-style:none;
+    font-family:var(--mono); font-size:12.5px;
+  }
+  .meta div{padding:9px 0; border-top:1px solid var(--rule)}
+  .meta dt{color:var(--ink-faint); letter-spacing:.06em; font-size:11px; text-transform:uppercase}
+  .meta dd{margin:2px 0 0; color:var(--ink); font-variant-numeric:tabular-nums}
+
+  section{padding-top:56px}
+  .sec-label{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--ink-faint);
+    padding-bottom:8px; border-bottom:1px solid var(--rule); margin-bottom:24px;
+  }
+  h2{font-size:25px; line-height:1.4; font-weight:700; margin:0 0 14px; text-wrap:balance}
+  h3{font-size:17px; font-weight:700; margin:34px 0 10px; letter-spacing:.01em}
+  p{margin:0 0 15px}
+  strong{font-weight:700}
+  .lead{font-size:17.5px; color:var(--ink-soft)}
+  code{font-family:var(--mono); font-size:.9em; background:var(--rule-soft); padding:1px 5px; border-radius:2px}
+  pre{
+    font-family:var(--mono); font-size:13px; line-height:1.75; background:var(--surface);
+    border:1px solid var(--rule); border-left:3px solid var(--accent);
+    padding:16px 18px; margin:16px 0 8px; overflow-x:auto;
+  }
+  pre code{background:none; padding:0; font-size:inherit}
+
+  blockquote{
+    margin:0 0 22px; padding:14px 0 14px 20px;
+    border-left:3px solid var(--accent); background:none;
+    color:var(--ink-soft); font-size:15.5px;
+  }
+  blockquote p{margin:0 0 6px}
+  blockquote p:last-child{margin:0}
+  blockquote .src{font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink-faint); text-transform:uppercase}
+
+  .tag{
+    font-family:var(--mono); font-size:11.5px; font-weight:700; letter-spacing:.12em;
+    text-transform:uppercase; padding:5px 10px; white-space:nowrap;
+  }
+  .tag.good{color:var(--good); background:var(--good-wash)}
+  .tag.warn{color:var(--warn); background:var(--warn-wash)}
+  .tag.bad{color:var(--bad); background:var(--bad-wash)}
+  .tag.info{color:var(--accent); background:var(--accent-wash)}
+
+  .summary{display:flex; flex-direction:column; gap:0; margin:8px 0 0}
+  .summary .row{
+    display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start;
+    padding:18px 0; border-top:1px solid var(--rule);
+  }
+  .summary .row:last-child{border-bottom:1px solid var(--rule)}
+  .summary h4{margin:0 0 4px; font-size:16px; font-weight:700}
+  .summary p{margin:0; font-size:14.5px; color:var(--ink-soft)}
+
+  .tablewrap{overflow-x:auto; margin:0 0 8px}
+  table{border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums}
+  caption{
+    text-align:left; font-family:var(--mono); font-size:11.5px; letter-spacing:.08em;
+    color:var(--ink-faint); text-transform:uppercase; padding:0 0 8px;
+  }
+  th,td{padding:9px 14px 9px 0; text-align:left; border-bottom:1px solid var(--rule-soft)}
+  thead th{
+    font-family:var(--mono); font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+    color:var(--ink-faint); font-weight:400; border-bottom:1px solid var(--rule); white-space:nowrap;
+  }
+  td.num,th.num{text-align:right; font-family:var(--mono); padding-right:18px}
+  tr.hi td{background:var(--accent-wash); font-weight:700}
+  tr.hi td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  td.g{color:var(--good); font-weight:700}
+  td.b{color:var(--bad); font-weight:700}
+  .note{font-size:13px; color:var(--ink-faint); margin:6px 0 0; line-height:1.7}
+
+  .chart{margin:14px 0 4px; display:flex; flex-direction:column; gap:7px}
+  .bar-row{display:grid; grid-template-columns:minmax(150px,230px) 1fr minmax(72px,auto); gap:12px; align-items:center}
+  .bar-lab{font-size:13.5px; color:var(--ink-soft); text-align:right; line-height:1.4}
+  .bar-track{background:var(--rule-soft); height:17px; position:relative}
+  .bar-fill{height:100%; background:var(--ink-faint)}
+  .bar-fill.acc{background:var(--accent)}
+  .bar-fill.bad{background:var(--bad)}
+  .bar-val{font-family:var(--mono); font-size:13px; font-variant-numeric:tabular-nums; color:var(--ink)}
+
+  .callout{border:1px solid var(--rule); border-left:3px solid var(--accent); padding:18px 20px; margin:24px 0; background:var(--surface)}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout.bad{border-left-color:var(--bad)}
+  .callout.good{border-left-color:var(--good)}
+  .callout h4{margin:0 0 8px; font-size:15px; font-weight:700}
+  .callout p{margin:0 0 8px; font-size:14.5px}
+  .callout p:last-child{margin:0}
+
+  .stack{display:flex; flex-direction:column; gap:0; margin:18px 0 8px; max-width:660px}
+  .stack .layer{
+    display:grid; grid-template-columns:minmax(96px,auto) 1fr; gap:18px; align-items:baseline;
+    border:1px solid var(--rule); border-bottom:none; padding:14px 18px; background:var(--surface);
+  }
+  .stack .layer:last-child{border-bottom:1px solid var(--rule)}
+  .stack .layer.keep{border-left:3px solid var(--ink-faint)}
+  .stack .layer.change{border-left:3px solid var(--accent); background:var(--accent-wash)}
+  .stack .role{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+  .stack .body-t{font-size:14.5px}
+  .stack .body-t span{color:var(--ink-soft); font-size:13.5px}
+
+  ul{margin:0 0 15px; padding-left:1.15em}
+  li{margin-bottom:7px}
+  li::marker{color:var(--ink-faint)}
+
+  footer{margin-top:72px; padding-top:22px; border-top:1px solid var(--rule); font-family:var(--mono); font-size:12px; color:var(--ink-faint)}
+  a{color:var(--accent)}
+  a:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+  @media (max-width:640px){
+    .bar-row{grid-template-columns:1fr; gap:3px}
+    .bar-lab{text-align:left}
+    .summary .row{grid-template-columns:1fr}
+    .stack .layer{grid-template-columns:1fr; gap:2px}
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">最終レポート — Apex-Train / 報酬予測NN</p>
+  <h1>報酬予測NNの最終構成</h1>
+  <p class="subtitle">出力ヘッドの比較検証を経て採用した構成と、「NNは高頻度値を出してLossを下げているだけではないか」という指摘に対する実測での検証</p>
+  <dl class="meta">
+    <div><dt>検証日</dt><dd>2026-08-18</dd></div>
+    <div><dt>学習データ</dt><dd>37,748 行</dd></div>
+    <div><dt>テスト分割</dt><dd>7,550 行 (20%・層化)</dd></div>
+    <div><dt>採用ヘッド</dt><dd>scalar (Huber)</dd></div>
+  </dl>
+</header>
+
+<section>
+  <p class="sec-label">要約</p>
+  <h2>結論は2つ</h2>
+
+  <div class="summary">
+    <div class="row">
+      <span class="tag info">構成</span>
+      <div>
+        <h4>出力ヘッドは従来のスカラー回帰（Huber）を維持する</h4>
+        <p>HL-Gaussian（ビンsoftmax＋ガウス目標）を実装して2回比較しましたが、<strong>有意に勝った項目はひとつもなく</strong>、上端（ラベル0.9〜1.0）で有意に劣りました。理論上の利点は本データでは実現しません。</p>
+      </div>
+    </div>
+    <div class="row">
+      <span class="tag good">反証</span>
+      <div>
+        <h4>「高頻度値でLossを下げているだけ」ではない</h4>
+        <p>指摘そのものを実装したベースラインに対し誤差は<strong>2.92分の1</strong>。さらに決定的なのは、<strong>過剰生産比と学習件数の順位相関が −0.855</strong>、つまりNNは「データの少ないラベルほど余計に出している」ことです。頻度への迎合とは逆向きの挙動です。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">最終構成</p>
+  <h2>採用したNN構成</h2>
+
+  <div class="stack">
+    <div class="layer keep">
+      <span class="role">入力</span>
+      <span class="body-t">状態 53 次元（<code>reward_features.STATE_FEATURE_COLS</code>）＋ モード one-hot 4 次元 ＝ <strong>57 次元</strong><br><span>モード判定は anti_mid_stop のみモードNN、delay_recovery / normal はルール</span></span>
+    </div>
+    <div class="layer keep">
+      <span class="role">幹</span>
+      <span class="body-t">Dense 128 → 64 → 32、各層 BatchNorm ＋ ReLU ＋ Dropout(0.3 / 0.2 / 0.1)、L2 1e-4<br><span>Adam lr=1e-3・clipnorm=1.0、EarlyStopping patience=30</span></span>
+    </div>
+    <div class="layer keep">
+      <span class="role">ゲート</span>
+      <span class="body-t">Dense(1, sigmoid) ＋ binary_crossentropy。「reward=0.0 か否か」の二値分類<br><span>停車完了フェーズ行にサンプル重み ×3.0。統合せず<strong>分離を維持</strong></span></span>
+    </div>
+    <div class="layer keep">
+      <span class="role">回帰器</span>
+      <span class="body-t">Dense(1, linear) ＋ <strong>Huber(δ=1.0)</strong>。非0.0行のみで学習<br><span>サンプル重み＝頻度逆数(sqrt緩和) × 停車フェーズ3.0 × 上限ラベル2.5</span></span>
+    </div>
+    <div class="layer keep">
+      <span class="role">合成</span>
+      <span class="body-t">ゲート確率 π ≥ 0.5 → <code>0.0</code>／それ以外 → <code>round(clip(reg, 0.1, 1.0), 1)</code><br><span>DQNへ渡る報酬は 0.0〜1.0 の 0.1 刻み 11 値</span></span>
+    </div>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <caption>採用構成の性能（テスト 7,550 行）</caption>
+      <thead><tr><th>指標</th><th class="num">値</th><th>備考</th></tr></thead>
+      <tbody>
+        <tr class="hi"><td>MAE（件数重み）</td><td class="num">0.0807</td><td>ラベル刻み0.1の1目盛未満</td></tr>
+        <tr><td>balanced-MAE（ビン等重み）</td><td class="num">0.1051</td><td>少数ラベルを平等に見た誤差</td></tr>
+        <tr><td>決定係数 R²</td><td class="num">0.8415</td><td>—</td></tr>
+        <tr><td>Spearman ρ</td><td class="num">0.9213</td><td>順序の再現</td></tr>
+        <tr><td>校正の傾き slope</td><td class="num">0.7409</td><td>1.0が無バイアス</td></tr>
+        <tr><td>予測std ÷ 真値std（非0行）</td><td class="num">0.8830</td><td>1.0が理想</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">選定経緯</p>
+  <h2>HL-Gaussianを実装して比較した結果</h2>
+  <div class="col">
+    <p>「回帰＋Huber損失では予測が中央へ圧縮される」という課題に対し、Imani &amp; White (ICML 2018) の HL-Gaussian を実装しました。出力を値域ビンの softmax にし、教師をラベル中心の打ち切り正規分布に変換して交差エントロピーで学習する方式です。予備ビンを両端に置いて端の打ち切りバイアスも解消しています（最大ズレ 0.0369 → 0.0024）。</p>
+    <p>同一データ・同一分割・同一の幹で学習し、<strong>丸めの有無を揃えたうえで</strong>対応のあるブートストラップ（2,000 回）で比較しました。ラベルが 0.1 格子上にあるため丸めは無条件に有利に働き、揃えないと比較が歪むためです。</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <caption>HL-Gaussian（丸め後）対 スカラー回帰 — 差の95%信頼区間</caption>
+      <thead><tr><th>指標</th><th class="num">HL-Gauss</th><th class="num">scalar</th><th class="num">差</th><th class="num">95% CI</th><th>判定</th></tr></thead>
+      <tbody>
+        <tr><td>MAE（件数重み）</td><td class="num">0.0835</td><td class="num">0.0807</td><td class="num">+0.0027</td><td class="num">[+0.0013, +0.0042]</td><td class="b">scalar が有意</td></tr>
+        <tr><td>balanced-MAE</td><td class="num">0.1036</td><td class="num">0.1051</td><td class="num">−0.0015</td><td class="num">[−0.0038, +0.0009]</td><td>有意差なし</td></tr>
+        <tr><td>ラベル0.0のMAE</td><td class="num">0.0161</td><td class="num">0.0181</td><td class="num">−0.0019</td><td class="num">[−0.0042, +0.0003]</td><td>有意差なし</td></tr>
+        <tr><td>ラベル0.3〜0.7のMAE</td><td class="num">0.1197</td><td class="num">0.1235</td><td class="num">−0.0038</td><td class="num">[−0.0077, +0.0002]</td><td>有意差なし</td></tr>
+        <tr class="hi"><td>ラベル0.9〜1.0のMAE</td><td class="num">0.1152</td><td class="num">0.1048</td><td class="num">+0.0104</td><td class="num">[+0.0077, +0.0129]</td><td>scalar が有意</td></tr>
+        <tr><td>校正の傾き slope</td><td class="num">0.7213</td><td class="num">0.7409</td><td class="num">−0.0196</td><td class="num">[−0.0262, −0.0130]</td><td class="b">scalar が有意</td></tr>
+        <tr><td>予測std ÷ 真値std</td><td class="num">0.8740</td><td class="num">0.8830</td><td class="num">−0.0090</td><td class="num">[−0.0134, −0.0044]</td><td class="b">scalar が有意</td></tr>
+        <tr><td>Spearman ρ</td><td class="num">0.9211</td><td class="num">0.9213</td><td class="num">−0.0001</td><td class="num">[−0.0028, +0.0028]</td><td>有意差なし</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">有意に scalar が良い：4項目／有意に HL-Gaussian が良い：<strong>0項目</strong>。比較用スクリプト経由で学習したモデルでも、本番レシピで学習し直したモデルでも、同じ4項目・同じ向きで結論が一致しました。</p>
+
+  <h3>HL-Gaussianが上端で負ける理由</h3>
+  <p class="col">期待値読み出しの構造的な保守性です。ラベル 1.0 はデータの 25.6% を占める点質量ですが、期待値で 1.0 を出すにはビン確率をほぼ全て 1.0 側へ集める必要があり、0.95 に残った質量がそのまま予測を引き下げます。スカラー回帰は 1.0 を直接出力できるためこの不利がありません。ラベル0.9〜1.0だけでテストの <strong>35.5%</strong> を占めるので、校正の傾きと分散比まで押し下げられました。</p>
+
+  <div class="callout">
+    <h4>ゼロアトム統合（ゲートを単一ヘッドに統合する案）も不採用</h4>
+    <p>ゲートを廃して単一 softmax に統合する構成も試しましたが、真値0.0のMAEが 0.017 → 0.041〜0.062 と 2.4〜3.6 倍に悪化しました。ゲート確率は実質的に二値（π&lt;0.1 が 64.7%、π≥0.5 が 32.6%、中間はわずか 2.7%）で、統合による「閾値の不連続の除去」という利点はほとんど働きません。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">指摘の検証</p>
+  <h2>高頻度値を出してLossを下げているだけではないか</h2>
+
+  <blockquote>
+    <p>評価NNについて、データ数の多い0.0や0.9とか1.0出しとけばLoss下がるとNNが学習していない？</p>
+    <p>0.0についてはデータ数が多いから分類器と0.0以外の値予測器に分けている。それなら、0.0でなく0.9や1.0を出しとけば正解と思っている気がする。</p>
+    <p class="src">8月中間報告 指摘事項より</p>
+  </blockquote>
+
+  <p class="col">ラベルが両端に偏っているのは事実です。0.0 が 32.2%、1.0 が 25.6% で、両端だけで <strong>57.8%</strong>。中間値は各 1〜4% しかありません。「両端を出しておけば当たる」構造は実在します。以下、5つの角度から検証します。</p>
+
+  <h3>根拠 1 — 「手抜き」を明示的に実装して比較する</h3>
+  <p class="col">指摘が想定する挙動をそのままベースラインとして実装し、実モデルと同一のテスト分割で比較しました。</p>
+
+  <div class="chart" role="img" aria-label="MAE比較。実モデル0.0807に対し、ゲート＋非0は常に1.0は0.2361で2.92倍。">
+    <div class="bar-row"><span class="bar-lab">実モデル（採用構成）</span><span class="bar-track"><span class="bar-fill acc" style="width:14.8%"></span></span><span class="bar-val">0.0807</span></div>
+    <div class="bar-row"><span class="bar-lab">ゲート＋非0は常に1.0<br><span style="font-size:12px">＝指摘そのもの</span></span><span class="bar-track"><span class="bar-fill bad" style="width:43.3%"></span></span><span class="bar-val">0.2361</span></div>
+    <div class="bar-row"><span class="bar-lab">ゲート＋非0は頻度重心</span><span class="bar-track"><span class="bar-fill" style="width:48.4%"></span></span><span class="bar-val">0.2640</span></div>
+    <div class="bar-row"><span class="bar-lab">常にラベル中央値 0.3</span><span class="bar-track"><span class="bar-fill" style="width:72.0%"></span></span><span class="bar-val">0.3927</span></div>
+    <div class="bar-row"><span class="bar-lab">常にラベル平均 0.45</span><span class="bar-track"><span class="bar-fill" style="width:73.8%"></span></span><span class="bar-val">0.4028</span></div>
+    <div class="bar-row"><span class="bar-lab">常に最頻値 0.0</span><span class="bar-track"><span class="bar-fill" style="width:83.2%"></span></span><span class="bar-val">0.4543</span></div>
+    <div class="bar-row"><span class="bar-lab">常に 1.0</span><span class="bar-track"><span class="bar-fill" style="width:100%"></span></span><span class="bar-val">0.5457</span></div>
+  </div>
+  <p class="note">平均絶対誤差（MAE・小さいほど良い）。テスト 7,550 行。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>balanced-MAE と R² も併せて</caption>
+      <thead><tr><th>手法</th><th class="num">MAE</th><th class="num">balanced-MAE</th><th class="num">R²</th><th class="num">実モデル比</th></tr></thead>
+      <tbody>
+        <tr class="hi"><td>実モデル（採用構成）</td><td class="num">0.0807</td><td class="num">0.1051</td><td class="num">0.8415</td><td class="num">1.00倍</td></tr>
+        <tr><td>ゲート＋非0は常に1.0 ← 指摘そのもの</td><td class="num">0.2361</td><td class="num">0.4111</td><td class="num">0.0648</td><td class="num">2.92倍</td></tr>
+        <tr><td>ゲート＋非0は頻度重心</td><td class="num">0.2640</td><td class="num">0.2398</td><td class="num">0.3286</td><td class="num">3.27倍</td></tr>
+        <tr><td>常に最頻値 0.0</td><td class="num">0.4543</td><td class="num">0.5000</td><td class="num">−1.1310</td><td class="num">5.63倍</td></tr>
+        <tr><td>常に 1.0</td><td class="num">0.5457</td><td class="num">0.5000</td><td class="num">−1.6316</td><td class="num">6.76倍</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">最良の「手抜き」ベースラインに対して誤差は <strong>2.92 分の 1</strong>、balanced-MAE では <strong>3.9 分の 1</strong>。R² も 0.065 に対し 0.842 で、手抜きでは到達できない水準です。</p>
+
+  <h3>根拠 2 — 予測が高頻度値に集中していない（むしろ真値より分散している）</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>観点</th><th class="num">予測</th><th class="num">真値</th><th>判定</th></tr></thead>
+      <tbody>
+        <tr><td>ユニーク値の数</td><td class="num">11 種</td><td class="num">11 種</td><td>全11値を出力しており潰れていない</td></tr>
+        <tr><td>標準偏差</td><td class="num">0.3976</td><td class="num">0.4272</td><td>比 0.931。分散はほぼ保たれている</td></tr>
+        <tr class="hi"><td>高頻度上位3値（0.0 / 0.2 / 1.0）の占有率</td><td class="num">56.4%</td><td class="num">68.8%</td><td><strong>予測のほうが高頻度値に頼っていない</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">高頻度値に迎合しているなら占有率は真値を<strong>上回る</strong>はずですが、実際は 12.4 ポイント下回っています。</p>
+
+  <h3>根拠 3 — 誤差が学習件数で説明できない</h3>
+  <p class="col">頻度に依存しているなら「データの多いラベルほど当たり、少ないラベルほど外す」はずです。学習件数の昇順に並べて確認しました。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>学習件数の昇順 — ビン別のMAEとバイアス</caption>
+      <thead><tr><th class="num">真値</th><th class="num">学習件数</th><th class="num">MAE</th><th class="num">バイアス</th></tr></thead>
+      <tbody>
+        <tr class="hi"><td class="num">0.7</td><td class="num">255（最少）</td><td class="num">0.1141</td><td class="num">+0.0047</td></tr>
+        <tr><td class="num">0.6</td><td class="num">520</td><td class="num">0.0946</td><td class="num">+0.0023</td></tr>
+        <tr><td class="num">0.4</td><td class="num">811</td><td class="num">0.1243</td><td class="num">+0.0639</td></tr>
+        <tr><td class="num">0.8</td><td class="num">973</td><td class="num">0.0741</td><td class="num">−0.0379</td></tr>
+        <tr><td class="num">0.3</td><td class="num">1,007</td><td class="num">0.1421</td><td class="num">+0.1016</td></tr>
+        <tr><td class="num">0.5</td><td class="num">1,101</td><td class="num">0.1218</td><td class="num">+0.0527</td></tr>
+        <tr><td class="num">0.1</td><td class="num">1,742</td><td class="num">0.1236</td><td class="num">+0.1204</td></tr>
+        <tr><td class="num">0.9</td><td class="num">3,007</td><td class="num">0.1311</td><td class="num">−0.1056</td></tr>
+        <tr><td class="num">0.2</td><td class="num">3,333</td><td class="num">0.1181</td><td class="num">+0.0965</td></tr>
+        <tr><td class="num">1.0</td><td class="num">7,727</td><td class="num">0.0946</td><td class="num">−0.0946</td></tr>
+        <tr class="hi"><td class="num">0.0</td><td class="num">9,722（最多）</td><td class="num">0.0181</td><td class="num">+0.0181</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ul class="col">
+    <li><strong>Spearman(学習件数, ビン別MAE) = −0.109</strong> — ほぼ無相関。「多いラベルほど当たる」関係は成立していません。</li>
+    <li><strong>最少ラベル 0.7（255行）のバイアスは +0.0047</strong>、つまり実質ゼロです。データが 38 分の 1 しかないのに、最多ラベル 0.0（9,722行・バイアス +0.0181）より小さい。</li>
+    <li><strong>Spearman(学習件数, |バイアス|) = +0.445</strong> — むしろ<strong>データが多いラベルほどバイアスが大きい</strong>という、頻度仮説とは逆向きの相関です。</li>
+  </ul>
+
+  <h3>根拠 4 — 過剰生産の向きが頻度と逆（最も決定的）</h3>
+  <p class="col">「余計に出している値」がどれかを、過剰生産比（予測件数 ÷ 真値件数）で調べました。頻度に迎合しているなら、学習件数の多いラベルほど過剰に出るはずです。</p>
+
+  <div class="callout good">
+    <h4>Spearman(学習件数, 過剰生産比) = <strong>−0.855</strong></h4>
+    <p>強い<strong>負</strong>の相関です。NNは「学習件数の<strong>少ない</strong>ラベルほど余計に出している」ことになり、頻度への迎合とは正反対の挙動です。</p>
+    <p>実際、最も学習件数が少ないラベル 0.7（255 行）の過剰生産比は <strong>7.98 倍</strong>。一方でラベル 1.0（7,727 行）は過少生産です。「0.9 や 1.0 を出しておけば正解と思っている」という想定とは真逆の結果でした。</p>
+  </div>
+
+  <p class="col">頻度重心（0.454）への収縮係数 β も <strong>+0.146</strong> と小さい値です。β=1 なら予測が完全に頻度重心へ潰れていることを意味しますが、実測はその 15% 程度しか引かれていません。</p>
+
+  <h3>根拠 5 — 順序が正しく再現されている</h3>
+  <ul class="col">
+    <li>ラベル別の予測平均が<strong>厳密に単調増加</strong>：0.018 → 0.220 → 0.297 → 0.402 → 0.464 → 0.553 → 0.602 → 0.705 → 0.762 → 0.794 → 0.905</li>
+    <li>Spearman ρ = <strong>0.9213</strong>、Pearson r = 0.9175</li>
+    <li>真値差 0.2 以上のペア（203,814 組）の<strong>順位一致率 94.61%</strong></li>
+  </ul>
+  <p class="col">両端しか出していないなら、中間ラベルの予測平均は両端に張り付き、単調性は崩れます。実際にはラベルが 0.1 上がるごとに予測平均もきれいに上がっています。強化学習では報酬の絶対値より順序が効くため、この点は特に重要です。</p>
+
+  <div class="callout good">
+    <h4>結論：指摘は反証されました</h4>
+    <p>5つの角度すべてで否定的な結果が出ました。とくに根拠4の <strong>ρ = −0.855</strong> は決定的で、NNの過剰生産はデータ量の多い値ではなく<strong>少ない値</strong>に向いています。高頻度値でLossを下げているという説明は成立しません。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">残る本当の問題</p>
+  <h2>では、なぜ 0.6〜0.7 を過剰に出すのか</h2>
+  <div class="col">
+    <p>頻度が原因でないなら、最少データの 0.7 を 8 倍も出す理由は別にあります。原因は<strong>ラベル側の矛盾</strong>です。</p>
+    <p>2026-08-13 の調査で、ほぼ同一の入力に高低両方のラベルが付いている領域が特定されました。「ノコギリ運転なら上限0点」という減点規則を LLM が CSV バッチによって適用したりしなかったりしており、適用率が <strong>77.4%（19ファイル）と 16.6%（26ファイル）に二極化</strong>しています。同じ状況に 0.0 と 1.0 の両方が付けば、二乗誤差を最小にする予測はその条件付き平均、つまり 0.6〜0.7 になります。</p>
+    <p>これは損失関数やヘッドをどう変えても動きません。実際、HL-Gaussian でも過剰生産比の形はスカラー回帰とほぼ同一で、Balanced MSE も全指標で悪化しました。手法側で回避できる問題ではないことが 3 度の試行で確認されています。</p>
+  </div>
+
+  <div class="callout bad">
+    <h4>次に効く一手</h4>
+    <p><strong>1.</strong> ノコギリ減点規則の適用揺れを解消して再ラベルする。これが 0.6〜0.7 への収束を生んでいる直接の原因です。</p>
+    <p><strong>2.</strong> <code>python analyze_reward_imbalance.py --noise-check</code> で既約ノイズ（ベイズ誤差の目安）を測る。ラベルを直したとき balanced-MAE をどこまで下げられるかの上限が分かります。</p>
+    <p><strong>3.</strong> ラベル整合後に HL-Gaussian を再評価する。今回は中央（0.3〜0.7）で −0.0038 と、あと一歩で有意に届く水準でした（上側CI +0.0002）。矛盾が消えれば結論が変わる可能性があります。</p>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">運用</p>
+  <h2>再現手順と残した仕組み</h2>
+
+  <pre><code># 採用構成での学習（評価NN＋モードNNをセットで再学習し整合チェックまで行う）
+python retrain_nns.py
+
+# 評価NNのみ・ヘッドを明示する場合
+python train_reward_network2.py --head scalar
+
+# 検証したHL-Gaussian構成（再現用に残してある）
+python train_reward_network2.py --head hl_gauss
+
+# 出力ヘッドを本番へ入れる前に安全に比較する（本番モデルを上書きしない）
+python train_reward_heads.py --variants baseline hl_gauss
+python compare_reward_heads.py --tags _base _hlg
+
+# ラベル不均衡による予測バイアスの診断
+python analyze_reward_imbalance.py --tags '' </code></pre>
+
+  <p class="col">HL-Gaussian の実装（<code>histogram_loss.py</code>、<code>--head</code> オプション、マニフェストによるヘッド判別）は削除せず残しています。ラベルを直した後に結論が変わる可能性があること、および検証の再現性を確保するためです。<code>direct_reward_manifest.json</code> の <code>regressor_head</code> を推論側・解析側が読むため、ヘッドを切り替えてもモデル・スケーラ・マニフェストの3点セットの世代が揃っていれば実行時挙動は自動的に追従します。世代が食い違う場合は起動時に例外を出し、報酬が黙って壊れることを防いでいます。</p>
+
+  <div class="tablewrap">
+    <table>
+      <caption>退避してあるモデル資産</caption>
+      <thead><tr><th>場所</th><th>内容</th></tr></thead>
+      <tbody>
+        <tr><td><code>past_hlgauss_20260818/</code></td><td>HL-Gaussian版の4点セット（モデル・ゲート・スケーラ・マニフェスト）</td></tr>
+        <tr><td><code>direct_reward_model2_scalar.*</code></td><td>採用したscalar構成のオリジナル（本番と同一内容）</td></tr>
+        <tr><td><code>direct_reward_model2_base.*</code></td><td>比較用スクリプト経由で学習したscalar基準</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  Apex-Train 研究記録 ／ 学習: <code>train_reward_network2.py</code>・<code>retrain_nns.py</code> ／ 推論: <code>direct_reward_predictor2.py</code> ／ 診断: <code>analyze_reward_imbalance.py</code>・<code>compare_reward_heads.py</code> ／ 関連: <code>docs/蒸留NN妥当性検証レポート.html</code>・<code>docs/報酬NN出力ヘッド比較レポート.html</code>
+</footer>
+
+</div>
