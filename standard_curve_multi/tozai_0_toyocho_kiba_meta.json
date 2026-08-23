@@ -1,0 +1,18 @@
+{
+  "line": "tozai",
+  "section": 0,
+  "departure": "toyocho",
+  "arrival": "kiba",
+  "distance_m": 964.500000000001,
+  "target_time": 80.0,
+  "arrival_time": 79.78000000000391,
+  "stop_error_m": -2.5562791550193253e-05,
+  "v_hold": 58.75,
+  "v_max": 62.19886353446313,
+  "coast_start_m": 98.04717350006115,
+  "energy_kJ_per_t": 88.88331943924544,
+  "brake_kJ_per_t": 130.41552497831418,
+  "notch_changes": 4,
+  "vehicle": "東京メトロ15000系(10両)",
+  "atc_mode": "anticipatory"
+}

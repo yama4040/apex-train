@@ -1,0 +1,18 @@
+{
+  "line": "tozai",
+  "section": 1,
+  "departure": "kiba",
+  "arrival": "monzennakacho",
+  "distance_m": 1057.9999999999998,
+  "target_time": 85.0,
+  "arrival_time": 84.92000000000654,
+  "stop_error_m": -0.00032452520892789494,
+  "v_hold": 74.0,
+  "v_max": 74.00563586364473,
+  "coast_start_m": 491.64425849914517,
+  "energy_kJ_per_t": 247.49585243289354,
+  "brake_kJ_per_t": 65.55029013289848,
+  "notch_changes": 4,
+  "vehicle": "東京メトロ15000系(10両)",
+  "atc_mode": "anticipatory"
+}

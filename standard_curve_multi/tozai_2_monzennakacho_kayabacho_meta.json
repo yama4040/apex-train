@@ -1,0 +1,18 @@
+{
+  "line": "tozai",
+  "section": 2,
+  "departure": "monzennakacho",
+  "arrival": "kayabacho",
+  "distance_m": 1801.8000000000002,
+  "target_time": 140.0,
+  "arrival_time": 139.90000000001774,
+  "stop_error_m": -0.002167324388402392,
+  "v_hold": 64.0,
+  "v_max": 64.01485635126559,
+  "coast_start_m": 988.4523696899414,
+  "energy_kJ_per_t": 292.152881587837,
+  "brake_kJ_per_t": 219.57132951715693,
+  "notch_changes": 9,
+  "vehicle": "東京メトロ15000系(10両)",
+  "atc_mode": "anticipatory"
+}

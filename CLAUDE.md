@@ -12,6 +12,23 @@
 - train_reward_network3.pyは出力値を分類問題としている
 - 回帰問題のNNを適用しているのがapex2.py，分類問題のNNを適用しているのがapex3.pyである
 - apex2.pyを基本的に使用して研究を行っていく
+- **進行中の拡張**: 単一駅間から**複数駅間**の最適化へ拡張中（フェーズ0に着手済み）。対象は東京メトロ東西線の**東陽町→木場→門前仲町**（3駅・2駅間）で、先行列車に加えて**後続列車**も扱う。設計・実装手順・研究手順は`docs_複数駅間最適化_計画.md`にまとめてある（既存の単一区間スクリプトは残し、`*_multi.py`として新規作成する方針）
+
+### 複数駅間最適化（`*_multi` 系・新規／既存には非干渉）
+東京メトロ東西線の3駅（東陽町→木場→門前仲町）へ拡張するための新規スクリプト群。
+**既存の単一区間手法（`apex2.py`・`evaluate_csv_with_llm.py`のプロンプト・学習済みモデル7ファイル）は
+一切変更せず、いつでも実行可能な状態に保つ**（詳細と変更禁止リストは`docs_複数駅間最適化_計画.md` §9.1）。
+- `line_config.py` — 路線メタデータ＋車両パラメータ。東西線（下りB線・CS-ATC現示・標準運転間隔140秒・標準停車30秒）と東京メトロ15000系（10両200m・走行抵抗A/B/C・引張力3領域・制動2.5 km/h/s・勾配補償35‰）
+- `track_multi.py` — 路線データローダ。**進行方向に増加する内部座標へ変換**（下りB線でキロ程が減少するため。勾配符号は保持）、勾配フィルタ緩和（範囲外は例外。既存`track.py`は無言で0.0にする）、`curve.csv`欠損許容、ATC現示は先頭位置で判定、現示低下点の先読み。単体実行で路線諸元を一覧表示できる
+- `actions_multi.py` — **5行動**の定義（P1力行／P2勾配力行／C惰行／B2勾配ブレーキ／B1制動）。P2は+35‰、B2は−35‰でちょうど定速になる
+- `train_multi.py` — 5ノッチの運動モデル。走行抵抗・制動・引張力を**1箇所に集約**（既存`train.py`は4箇所に重複）。P2の引張力クリップと起動時アサーション付き。単体実行で5ノッチ×勾配の加速度表を出力
+- `generate_standard_curve_multi.py` — **標準運転曲線ジェネレータ**。ATC現示の先読み天井・制動曲線の逆積分・V_holdグリッド探索・惰行開始点の二分探索。出力は`standard_curve_multi/`（PNG・CSV・meta.json）。東西線の全3駅間で停止位置誤差ミリメートル級で生成できることを確認済み
+- `evaluate_csv_with_llm_multi.py` — **複数駅間版のLLM評価ランナー**。プロンプト本文は`prompt_multi.py`に分離してあり、本体はCSV読み込み・プロンプト組み立て・API呼び出し・応答検証・書き戻しを担う。`--dry-run`（APIを呼ばず全行のプロンプト生成を検証）／`--workers N`（並列）／`--resume`（中断再開）／`--limit N`（試験）。応答は mode が5種のいずれか・reward が0〜1・checks の8キーが揃う・immediate_zero_ruleがNGならreward=0.0、を満たさなければリトライする。**既存の`evaluate_csv_with_llm.py`とはchecksのキーもmodeの種類も違うため流用不可**
+- `generate_eval_csv_multi.py` — **LLM評価用の走行ログCSV生成**。`prompt_multi.py`が要求する特徴量を全て埋めた走行ログを`評価用csv_Tozai/`へ出力する。正例（標準運転曲線の再現・v_std追従・惰行ポイント変動）と負例（早すぎる惰行・過剰力行・無駄な制動・ノコギリ・制動開始の遅早・ちんたら運転・下り勾配での力行）を方策として定義してある
+- `generate_forward_train_multi.py` — 先行／後続列車の走行パターン生成（複数駅間の惰行ポイント方式）。テストケースは2種で、`normal`（標準運転曲線の惰行開始速度＝東陽町発48.7／木場発74.0 km/h）と`slow`（東陽町発40／木場発55 km/h）。**登り勾配で35km/hを下回ったらVまで再力行**する（このルールが無いと+27〜29.7‰のランプで失速し駅の481〜578m手前で駅間停車する）。出力は`input/f_train_multi/`（駅停車時間の組合せで24ファイル）
+- `required_speed_multi.py` — **目標速度の算出**。既存`required_speed.py`は勾配・制限速度を「現在地点の値1つ」で駅まで一定と仮定するが、本モジュールは**前方プロファイルを積分**する（東西線は惰行減速度が+0.29〜−1.34 km/h/sと符号ごと反転するため必須）。提供するもの: ATC現示の先読み天井／先行列車のCBTC現示（停止限界＝先行の最後尾から50m手前）／プロファイル対応の制動距離／維持帯（勾配と乗り心地T_min=5秒から帯幅と使用ノッチ対を算出）／惰行到達可能性／モード別目標速度（normal=標準運転曲線v_std・delay_recovery=天井直下の維持帯・anti_mid_stop=先行クリア時間から算出・spacing=車間の均し）。`targets()`が0.45ms/回で毎ステップ呼べる。単体実行で各区間の目標速度を一覧表示
+- `optimal_curve_dp.py` — **検証用**。運転パターン（力行→定速保持→惰行→制動）を仮定せず、位置×速度の格子上で動的計画法を解いてエネルギー最小の理論下界を求める。`generate_standard_curve_multi.py`の解が最適から離れていないかの確認に使う（実測で力行仕事は理論下界の約13%増・ただしノッチ切替は1/4以下）
+- `prompt_multi.py` — 複数駅間版のLLM評価プロンプト。5ノッチ・可変維持帯・ATC先読み・標準運転曲線基準・停車中の発車判断・後続列車を含む。既存プロンプトとは別ファイルで保全
 
 ## 実行環境
 - uvで管理されたPython 3.11の仮想環境（`.venv/`）を使用する
@@ -39,8 +56,10 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 ## ディレクトリ構成
 - `input/` — シミュレーション条件の設定CSV（駅位置・速度制限・曲線・勾配・ダイヤ・遅延パターン等）。`track.py`や`environment*.py`が参照する固定データ
 - `input/f_train/` — 先行列車の走行パターンCSV（惰行ポイント方式・`coast{V}_stop{D}.csv`）。`generate_forward_train.py`が生成し、`apex2.py`のActor（学習）／Tester（検証）が読み込む
-- `data/` — `apex*.py`実行時の学習ログ・重み（`*.weights.h5`）・走行ダイアグラム等の出力先。`apex2.py`は各runの直下に`TASC制御/`を作り、テストケースごとに停止部分をTASCの制動で上書きした運転曲線PNG（本編と同一書式）と上書き後のCSVログを併せて出力する（学習ループにはTASCを入れない後処理。詳細は`docs_先行列車対応_設計メモ.md` §30・§31）
+- `input/Tozai_line/` — **東京メトロ東西線**の路線データ（複数駅間最適化用に2026-08-19追加）。`Tozai_line_Station.csv`（東陽町16.0118／木場15.0473／門前仲町13.9893／茅場町12.1875 km・`rt`=80/85/140/60秒）・`Tozai_line_grade.csv`（20区間・16.2243〜12.164 kmを被覆）・`Tozai_line_speed_limit.csv`（7区間・45〜75km/h）の3ファイル。**下り列車（B線）のためキロ程は進行方向に沿って減少する**（正常な仕様）。勾配は**進行方向基準**で符号をそのまま使える（東陽町→木場は平均−10.3‰の下り、木場→門前仲町は平均+11.3‰の登り・最大+29.7‰。実データで検証済み）。標準運転間隔はラッシュ時の**140秒**（2分20秒）を採用する。**既存の`track.py`ではそのまま読めない**点に注意（①位置の単調増加を前提としたロジックと逆向き／②勾配フィルタ`-40 < g <= 30`に+29.7‰が0.3‰差で接しており、茅場町まで延長すると±35‰が無言で0.0に潰される／③`curve.csv`に相当するファイルが無い）。複数駅間用の新ローダ`track_multi.py`でこれらを吸収する方針。**車両は東京メトロ15000系10両編成**（`15000系_車両情報.pdf`）を採用する。現行`train.py`の車両モデル（山形鉄道1両編成28t相当）では東西線の標準運転時間が達成できない（木場→門前仲町は全力行97.0秒で標準85秒に12秒不足）が、15000系なら71.3秒／77.3秒で9〜11%の余裕をもって成立する（制動は常用最大3.5ではなく一般的な駅停車ブレーキ2.5 km/h/sを使用）。**`Tozai_line_speed_limit.csv`はCS-ATCの信号現示の切替位置**であり、列車の先頭が越えた時点で現示が変わる（物理的な制限区間そのものではなく、制限に当たらないよう手前で切り替わる設定。よって列車長は考慮しない）。現示の扱いは**予見型**（低下点に到達した時点で既に新現示以下＝手前から緩やかに減速し乗り心地を確保）を既定とし、**追従型**（低下点で制動開始）も切替フラグで実装しておく。**10両編成＝列車長200mのため、CBTC停止限界（先行の最後尾から50m手前に自列車の先頭＝先行の先頭から250m手前）を新たにモデル化する必要がある**（現行実装には列車長の概念が無く、先行の先頭から50mしか引いていないため200m甘い）。列車長を効かせるのはCBTC車間・衝突判定・後続の頭打ち・可視化の4箇所で、ATC現示には適用しない。曲線データは東西線には無いが、対象3駅では影響が小さい（R=400m一律でも力行仕事+6〜7%、比較対象の羽前成田→白兎も距離加重平均0.05kg/tで実質曲線なし）。なお**既存の単一区間手法（`apex2.py`・LLM評価プロンプト・学習済みモデル）は一切変更せず、いつでも実行可能な状態に保つ**方針であり、複数駅間版は`_multi`系の新規スクリプトとして作る（報酬NNの成果物ファイル名も分離して上書き事故を防ぐ）。詳細は`docs_複数駅間最適化_計画.md` §6.5・§6.6・§9.1・付録B2
+- `data/` — `apex*.py`実行時の学習ログ・重み（`*.weights.h5`）・走行ダイアグラム等の出力先。停止部分をTASCの制動で上書きした運転曲線PNG（本編と同一書式）と上書き後のCSVログは、学習後に`apply_tasc_to_runcurve.py`を実行すると`<run>/TASC制御/`に生成される（学習ループにはTASCを入れない後処理。詳細は`docs_先行列車対応_設計メモ.md` §30・§31・§33）
 - `評価用csv/` — LLM評価前のシミュレータ走行ログ（`evaluate_csv_with_llm.py`の入力）
+- `評価用csv_Tozai/` / `評価済ログ_Tozai/` / `train_reward_csv_direct_Tozai/` — **複数駅間版（東西線）専用のデータ系統**。既存の`評価用csv/`・`train_reward_csv_direct/`とは**絶対に混ぜない**（3ノッチvs5ノッチ・プロンプト世代・勾配分布がすべて異なり、プロンプト世代の混在は過去にラベル矛盾の実害を出している）
 - `評価済ログ/` — LLM評価済みデータセット（`evaluate_csv_with_llm.py`の出力）
 - `train_reward_csv_direct/` — 報酬予測NNの学習に実際に使用するCSV置き場（`train_reward_network*.py`が直接読み込む）
 - `csv_direct_plas/`, `dataset（0～1.0）/` — LLM評価済みデータの中間・派生データ置き場
@@ -66,6 +85,8 @@ NNは3系統存在し、対応関係は以下の通り（詳細は`analyze_rewar
 - `train.py` — 列車の運動モデル（`Train`クラス）。加速・減速・惰行時の物理シミュレーションを行う共通ロジック
 - `track.py` — 路線データ（速度制限・曲線・勾配・ダイヤ）の読み込み
 - `actions.py` — 行動定義（`coasting`＝惰行／`acceleration`＝加速／`deceleration`＝減速）
+- `runcurve_plot.py` — 運転曲線PNGの共通描画（モード別配色`MODE_COLORS`・駅線・制限速度の階段線）。`apex2.py`のTesterと`apply_tasc_to_runcurve.py`が共有し、両者のPNGを同一書式に保つ
+- `apply_tasc_to_runcurve.py` — **学習後の後処理**。DQNの走行ログの停止部分をTASC（停止位置制御）の制動パターンで上書きし、運転曲線PNG（本編と同一書式）と上書き後のCSVログを`<run>/TASC制御/`へ出力する。学習フォルダとcycle番号を渡すとそのcycleの全テストケースを一括処理する。学習ループにTASCは入れない（入れるとTASC作動中は3行動が同一結果になりQ値が膨張して方策が破綻する。詳細は`docs_先行列車対応_設計メモ.md` §30・§33）。引き継ぎ点は「制動パターンに到達した点」、到達しない場合は「最後の制動を開始した点」まで遡って直前のノッチを延長する。延長中は制限速度・CBTC現示を超えない／失速して駅間停車しないようガードする。apex2.py側の呼び出しはコメントアウトで残してあり、学習中に出力させたい場合は戻せる
 - `segment_tree.py` — 優先度付き経験再生用の`SumTree`実装
 - `required_speed.py` — 必要速度（巡航速度）・ブレーキ停止距離の算出ロジック。`evaluate_csv_with_llm.py`（LLM評価プロンプト生成）と`environment2.py`/`environment3.py`（NN学習・推論）の両方から参照され、算出方法を一致させるための共通モジュール
 - `generate_forward_train.py` — 先行列車用の走行パターンCSV（`input/f_train/coast{V}_stop{D}.csv`）を生成するスクリプト。先行列車も自列車と同じ省エネ運転（**惰行ポイント方式**: 出発→惰行ポイントV[km/h]まで力行→惰行→駅に向かって制動→次駅停車→再出発）をしているものとして扱う。V=65が`generate_standard_curve.py`の標準運転曲線と一致し（白兎に181秒で到着）、V=50は標準より遅い運転。この駅間は白兎手前が上り勾配のため惰行のみで駅に届くのはV≒62km/h以上に限られ、V<65では「惰行を続けても制動開始点に届かない」と判定した時点でVまで再加速して駅間停車を避ける（届くと判定した後は再加速しないので、最後の「Vで惰行して駅に向かって減速」フェーズはVによらず必ず現れる）。停止位置誤差は全78パターンで0.00m。先行の出発遅延はCSVでは表現せず、`apex2.py`側で出発間隔（headway）に換算して与える。旧形式（定速走行・`input/f_train_*.csv`、`apex.py`/`apex3.py`が参照）は`--legacy`で再生成できる。詳細は`docs_先行列車対応_設計メモ.md` §32
@@ -145,6 +166,16 @@ python apex2.py
 python generate_forward_train.py
 python generate_forward_train.py --legacy   # 旧形式（定速走行）のinput/f_train_*.csvを再生成
 
+# 複数駅間版（東西線）の路線諸元の確認・標準運転曲線の生成
+python track_multi.py tozai                                  # 駅・ATC現示・勾配の一覧
+python train_multi.py                                        # 5ノッチ×勾配の加速度表
+python generate_standard_curve_multi.py                      # 全駅間の標準運転曲線を standard_curve_multi/ へ
+python generate_standard_curve_multi.py --section 0           # 東陽町→木場のみ
+python generate_forward_train_multi.py                       # 先行列車パターンを input/f_train_multi/ へ
+python generate_eval_csv_multi.py                            # LLM評価用の走行ログを 評価用csv_Tozai/ へ
+python evaluate_csv_with_llm_multi.py --dry-run              # APIを呼ばずプロンプトを確認
+python evaluate_csv_with_llm_multi.py --workers 6            # LLM評価の本番実行（.env が必要）
+
 # 回帰NNの学習（train_reward_csv_direct/のデータを使用・既定はHL-Gaussianヘッド）
 python train_reward_network2.py
 python train_reward_network2.py --head scalar        # 旧構成（Huber回帰）の再現
@@ -166,6 +197,12 @@ python compare_reward_heads.py --tags _base _hlg
 
 # QNetworkの学習具合（Qテーブルの埋まり具合）を可視化（data/以下の最新重みを自動選択）
 python analyze_qnet_coverage.py --overlay-csv comp/12100_0.csv
+
+# TASC制御で停止部分を上書きした運転曲線・CSVの生成（学習後の後処理）
+python apply_tasc_to_runcurve.py data/<run> <cycle>          # そのcycleの全テストケース
+python apply_tasc_to_runcurve.py data/<run>                  # cycle省略＝最新cycle
+python apply_tasc_to_runcurve.py data/<run> <cycle> --cases 0 3 14
+python apply_tasc_to_runcurve.py --csv data/<run>/<cycle>_0.csv
 
 # 運転曲線モニター（テストケースのログを再生するGUIアプリ）
 python drive_monitor.py                                        # GUIでCSVを選択

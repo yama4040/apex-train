@@ -1,0 +1,36 @@
+﻿source_file,time,run_id,section,position_km,phase,current_notch,holding_time,prev_notch,prev_notch_duration,notch_jump,current_speed,atc_now,signal_speed,v_ceiling,v_target,band_upper,band_lower,band_notch_pair,hold_notch,v_std,v_std_deviation,schedule_speed,section_cap,required_speed,target_speed_no_stop,target_speed_spacing,dist_to_next_station,time_to_next_station,req_stop_dist,delta_stop,current_gradient,coast_accel,power_accel,next_gradient_info,limit_drop_ahead,delay,total_delay,stations_remaining,total_remaining_time,forward_info,forward_train_delay,forward_departed_next,standard_headway,forward_clear_remaining_time,forward_observed_delay,backward_info,backward_distance,backward_speed,backward_delay,is_dwelling,dwell_elapsed,dwell_min,dwell_max,mode,reward,reason,checks
+tozai_normal_bad.csv,87.5,sawtooth_s1_2s,1,2.022594,次駅への減速フェーズ（駅手前400m以内）,制動,22.6,力行,0.9,5.87,0.81,70.0,70.0,70.0,1.5,65.2,60.5,勾配力行 ↔ 惰行,惰行,1.5,-0.7,,75.0,0.0,0.0,,-0.1,0.0,0.03,-0.13,3.0,-0.181,3.193,当面+3.0‰が続く,339m先でATC現示が70km/hから55km/hに低下する,2.5,2.5,1,0.0,先行列車なし,0,,0,0,0,後続列車なし,該当なし,該当なし,0,0,0,30,240,,,"評価失敗: 通信エラー: <html>
+<head><title>504 Gateway Time-out</title></head>
+<body>
+<center><h1>504 Gateway Time-out</h1></center>
+<hr><center>openresty</center>
+</body>
+</html>",
+tozai_normal_bad.csv,32.0,over_power_s0,0,0.431282,巡航フェーズ（駅間走行中）,惰行,7.2,力行,24.8,1.73,76.58,75.0,75.0,75.0,56.6,72.0,68.7,惰行 ↔ 勾配ブレーキ,惰行,56.6,20.0,50.2,75.0,75.0,75.0,,533.2,48.0,356.02,177.19,-16.3,0.255,1.981,280m先で勾配が-16.3‰から+2.0‰に変わる,前方に現示の低下なし,0.0,0.0,1,48.0,先行列車なし,0,,0,0,0,後続列車なし,該当なし,該当なし,0,0,0,30,240,,,"評価失敗: 通信エラー: <html>
+<head><title>504 Gateway Time-out</title></head>
+<body>
+<center><h1>504 Gateway Time-out</h1></center>
+<hr><center>openresty</center>
+</body>
+</html>",
+tozai_normal_bad.csv,54.0,brake_early_s0,0,0.78355,次駅への減速フェーズ（駅手前400m以内）,制動,7.6,惰行,0.0,2.5,48.66,75.0,75.0,75.0,59.8,71.2,65.4,勾配力行 ↔ 惰行,惰行,59.8,-11.1,,75.0,48.7,48.7,,180.9,26.0,121.02,59.93,2.0,-0.268,2.505,当面+2.0‰が続く,888m先でATC現示が75km/hから70km/hに低下する,0.0,0.0,1,26.0,先行列車なし,0,,0,0,0,後続列車なし,該当なし,該当なし,0,0,0,30,240,,,"評価失敗: 通信エラー: <html>
+<head><title>504 Gateway Time-out</title></head>
+<body>
+<center><h1>504 Gateway Time-out</h1></center>
+<hr><center>openresty</center>
+</body>
+</html>",
+tozai_normal_bad.csv,71.0,sawtooth_s0_3s,0,0.957812,次駅への減速フェーズ（駅手前400m以内）,制動,26.5,力行,0.0,5.87,11.63,75.0,75.0,75.0,11.4,70.2,64.4,勾配力行 ↔ 惰行,惰行,11.4,0.2,,75.0,75.0,75.0,,6.7,9.0,7.07,-0.38,2.0,-0.164,3.21,当面+2.0‰が続く,714m先でATC現示が75km/hから70km/hに低下する,0.0,0.0,1,9.0,先行列車なし,0,,0,0,0,後続列車なし,該当なし,該当なし,0,0,0,30,240,,,"評価失敗: 通信エラー: <html>
+<head><title>504 Gateway Time-out</title></head>
+<body>
+<center><h1>504 Gateway Time-out</h1></center>
+<hr><center>openresty</center>
+</body>
+</html>",
+tozai_normal_bad.csv,52.0,crawl_s1_30,1,1.353198,現示低下点への接近フェーズ（500m以内に現示の低下あり）,惰行,0.0,力行,0.0,3.37,29.52,75.0,75.0,75.0,73.1,70.4,65.7,勾配力行 ↔ 惰行,勾配力行,73.1,-43.6,75.0,75.0,75.0,75.0,,669.3,33.0,36.02,633.28,4.0,-0.277,3.097,10m先で勾配が+4.0‰から+27.0‰に変わる,319m先でATC現示が75km/hから70km/hに低下する,0.0,0.0,1,33.0,先行列車なし,0,,0,0,0,後続列車なし,該当なし,該当なし,0,0,0,30,240,,,"評価失敗: 通信エラー: <html>
+<head><title>504 Gateway Time-out</title></head>
+<body>
+<center><h1>504 Gateway Time-out</h1></center>
+<hr><center>openresty</center>
+</body>
+</html>",
