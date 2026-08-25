@@ -1,4 +1,5 @@
 data/
+data_ymulti/
 .env
 __pycache__/
 評価用csv/

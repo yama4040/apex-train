@@ -1,0 +1,76 @@
+{
+  "line": "山形鉄道フラワー長井線（羽前成田→白兎→蚕桑）",
+  "notches": 3,
+  "station_indices": [
+    11,
+    12,
+    13
+  ],
+  "station_names": [
+    "羽前成田",
+    "白兎",
+    "蚕桑"
+  ],
+  "running_times": [
+    180.0,
+    130.0
+  ],
+  "running_times_station_csv": [
+    180.0,
+    180.0
+  ],
+  "std_dwell": 30.0,
+  "scheduled_arrival": [
+    0.0,
+    180.0,
+    340.0
+  ],
+  "scheduled_departure": [
+    0.0,
+    210.0,
+    null
+  ],
+  "total_scheduled_time": 340.0,
+  "sections": [
+    {
+      "section": 0,
+      "departure_index": 11,
+      "from": "羽前成田",
+      "to": "白兎",
+      "start_position": 21.112,
+      "end_position": 23.29,
+      "distance_m": 2178.000000000001,
+      "target_time": 180.0,
+      "arrival_time": 179.98999999998128,
+      "stop_error_m": 0.021780522430958627,
+      "v_hold": 65.25,
+      "max_speed": 65.08450454599729,
+      "energy_kwh": 1.367678007855679,
+      "notch_changes": 2,
+      "coast_position": 21.70096245956421,
+      "brake_position": 23.262972856074665,
+      "brake_speed": 23.893109609225206,
+      "pattern": "力行(0-51s, 0→65km/h) → 惰行(51-172s, 65→24km/h) → 制動(172-180s, 24→0km/h)"
+    },
+    {
+      "section": 1,
+      "departure_index": 12,
+      "from": "白兎",
+      "to": "蚕桑",
+      "start_position": 23.29,
+      "end_position": 24.667,
+      "distance_m": 1377.0000000000025,
+      "target_time": 130.0,
+      "arrival_time": 129.99000000002675,
+      "stop_error_m": 0.017729951149902945,
+      "v_hold": 54.5,
+      "max_speed": 54.624808267454,
+      "energy_kwh": 1.7607635434430096,
+      "notch_changes": 2,
+      "coast_position": 23.990610418319704,
+      "brake_position": 24.58402977806717,
+      "brake_speed": 38.971940622536785,
+      "pattern": "力行(0-65s, 0→54km/h) → 惰行(66-114s, 55→39km/h) → 制動(115-130s, 39→0km/h)"
+    }
+  ]
+}

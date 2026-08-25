@@ -30,6 +30,61 @@
 - `optimal_curve_dp.py` — **検証用**。運転パターン（力行→定速保持→惰行→制動）を仮定せず、位置×速度の格子上で動的計画法を解いてエネルギー最小の理論下界を求める。`generate_standard_curve_multi.py`の解が最適から離れていないかの確認に使う（実測で力行仕事は理論下界の約13%増・ただしノッチ切替は1/4以下）
 - `prompt_multi.py` — 複数駅間版のLLM評価プロンプト。5ノッチ・可変維持帯・ATC先読み・標準運転曲線基準・停車中の発車判断・後続列車を含む。既存プロンプトとは別ファイルで保全
 
+### 複数駅間最適化・山形版（`*_ymulti` 系・新規／既存には非干渉）
+**既存路線（山形鉄道フラワー長井線）で複数駅間を1エピソードで走る**ための第3の系統。
+対象は**羽前成田 → 白兎 → 蚕桑**（3駅・2駅間）で、**中間駅（白兎）での発車判断**を学習させる。
+行動空間は**既存と同じ3ノッチ**（力行/惰行/制動）なので、単一区間版の結果とそのまま比較できる。
+設計・根拠・実行手順は`docs_複数駅間_山形_設計メモ.md`にまとめてある。
+
+**既存の`apex2.py`関連スクリプトは一切変更していない**。`train.py`・`track.py`・`actions.py`・
+`model.py`・`segment_tree.py`・`histogram_loss.py`・`generate_standard_curve.py`は
+**読み取り専用でimportするだけ**で、物理モデル・路線参照・制動曲線の逆積分を既存と完全に一致させている。
+
+- `config_ymulti.py` — 区間・ダイヤ・停車・先行パターン・出力先の設定。**白兎→蚕桑の標準運転時間は130秒**
+  （`input/Station.csv`の`rt`=180秒は1377mに対し最短118.8秒で余裕61秒あり緩すぎ、駅停車の遅延が下流に効かない。
+  Station.csvは書き換えずこちらで持つ）。標準停車30秒／最低停車30秒／**最大停車300秒**／出発間隔120秒／
+  列車長20m／CBTC停止限界は**先行の先頭から70m**（＝最後尾から50m）
+- `brake_curve_ymulti.py` — **駅から逆積分した制動曲線**。`train.req_stop_dist`と`required_speed.brake_stop_distance_m`は
+  「制動開始地点の勾配・曲線が停止まで一定」と仮定するが、蚕桑の制動開始点直前にR=400mの曲線があり
+  **制動距離を5.4m過小評価**する（実際に先行列車生成で5.75mの過走が発生）。逆積分なら数cm精度
+- `standard_curve_ymulti.py` — 2区間の標準運転曲線と**`v_std`ルックアップ表**の生成。既存`generate_standard_curve.StandardCurveSolver`を
+  再利用する。羽前成田→白兎は定速保持65.25km/h（180秒・誤差+0.022m）、白兎→蚕桑は54.50km/h（130秒・誤差+0.018m）、
+  通算340秒で累積標準ダイヤと一致。出力は`standard_curve_ymulti/`
+- `required_speed_ymulti.py` — **勾配プロファイルを積分する**目標速度。既存`required_speed.py`の一定勾配仮定では、
+  白兎→蚕桑（+11.4‰が1km→−2.3‰）で惰行減速度が−0.581→−0.097km/h/sと6倍変わるため誤差が大きい。
+  **惰行到達可能性**（`coast_probe`）も提供する。1ステップ2.27ms（既存3.59ms/回より速い）
+- `generate_forward_train_ymulti.py` — 先行列車パターン（**白兎・蚕桑の2駅で停車**）。
+  惰行ポイント40〜65km/h × 白兎{30,45,60}秒 × 蚕桑{30,60,120,180}秒 = **312種**を`input/f_train_ymulti/`へ。
+  蚕桑の120/180秒が「急病人救護など」の長時間停車＝自列車が白兎に留まるべき局面。停止位置誤差 最大0.142m・駅間停車0件
+- `reward_features_ymulti.py` — 状態スキーマ（49列）・特徴量（72次元）・**モード判定をルールで一本化**。
+  既存はモードNNのargmaxを併用していたが条件成立中でも`normal↔delay_recovery`が反転する実測問題があるため、
+  プロンプトの定義と`decide_mode()`を1対1に対応させた。モードは`normal`/`delay_recovery`/`anti_mid_stop`/
+  `spacing`（枠のみ）/**`hold_at_station`**（駅停車中の発車判断）
+- `environment_ymulti.py` — **複数駅走行＋駅停車フェーズ**を持つ環境（観測**40次元**）。
+  中間駅では`done`にせず停車フェーズへ遷移し、**3ノッチを「発車（力行）／待機（制動）」の2択に読み替える**
+  （惰行は禁止。待機と同一結果になりQ学習のmax演算子が過大評価を累積するため）。停車中は`time_step`を1.0秒に固定。
+  **既存`environment2.py`から直した実バグ4件**（①失敗判定を到着判定より先に行う＝先行に追突しても到着成功になっていた
+  ②異常接近を距離だけで判定 ③信号待ち判定を列車長込みにする ④信号開通後・発車直後の猶予）
+- `rule_reward_ymulti.py` — **暫定ルール報酬**。CLAUDE.mdの「報酬はNN出力のみ」制約に対する一時的な例外で、
+  報酬NNが用意できるまで環境・DQNの構造を検証するために使う。同時に`prompt_ymulti.py`の**実行可能な下書き**でもあり、
+  片方を直したらもう片方も直すこと
+- `prompt_ymulti.py` — LLM評価プロンプト（3ノッチ・複数駅間・**駅停車中の発車判断**・惰行到達可能性）。
+  既存プロンプトとも`prompt_multi.py`とも別ファイル
+- `generate_eval_csv_ymulti.py` — LLM評価用の走行ログCSV生成。**環境をそのまま走らせて生の状態辞書を書き出す**ので、
+  LLMが評価する状態とRL実行時に報酬NNが見る状態が構造的に一致する。正例7方策・負例5方策 × 33シナリオ
+- `evaluate_csv_with_llm_ymulti.py` — LLM評価ランナー。`--dry-run`／`--workers N`／`--resume`／`--limit N`。
+  **停車中の行なのに`mode`が`hold_at_station`でない応答や、`mode=spacing`（後続列車が存在しない）は検証エラーで再試行する**
+- `train_reward_network_ymulti.py` / `direct_reward_predictor_ymulti.py` — 報酬NNの学習と推論。
+  構成は既存推奨（ゲート＋HL-Gaussian）を踏襲し、**駅停車中の行にサンプル重み**を与える（走行中に比べ圧倒的に少ないため）
+- `runcurve_plot_ymulti.py` — 2区間通しの運転曲線と時刻-位置ダイアグラムの描画（標準運転曲線を重ねる）
+- `apex_ymulti.py` — Apex DQN 学習エントリポイント。**Double DQNが既定**（複数駅間はエピソードが2倍以上長く、
+  駅手前100mの0.1秒刻みが駅の数だけ増えてブートストラップ連鎖が伸びるため）。`--reward rule`で報酬NN無しでも回せる。
+  出力は`data_ymulti/`
+
+**データ置き場**（既存と絶対に混ぜない）: `standard_curve_ymulti/` / `input/f_train_ymulti/` /
+`評価用csv_Yamagata/` / `評価済ログ_Yamagata/` / `train_reward_csv_direct_Yamagata/` / `data_ymulti/` /
+`direct_reward_{model,gate,scaler,manifest}_ymulti.*`
+
 ## 実行環境
 - uvで管理されたPython 3.11の仮想環境（`.venv/`）を使用する
 - 依存パッケージは`requirements.txt`を参照（TensorFlow 2.15 / Ray 2.54 / pandas / scikit-learn / openai 等）
@@ -175,6 +230,19 @@ python generate_forward_train_multi.py                       # 先行列車パ�
 python generate_eval_csv_multi.py                            # LLM評価用の走行ログを 評価用csv_Tozai/ へ
 python evaluate_csv_with_llm_multi.py --dry-run              # APIを呼ばずプロンプトを確認
 python evaluate_csv_with_llm_multi.py --workers 6            # LLM評価の本番実行（.env が必要）
+
+# 複数駅間版・山形（羽前成田→白兎→蚕桑・3ノッチ）
+python config_ymulti.py                                      # 区間・ダイヤ・停車設定の確認
+python brake_curve_ymulti.py                                 # 制動距離（逆積分 vs 一定勾配近似）
+python required_speed_ymulti.py                              # 目標速度・惰行到達可能性の一覧
+python standard_curve_ymulti.py                              # 標準運転曲線とv_std表 → standard_curve_ymulti/
+python generate_forward_train_ymulti.py --jobs 6             # 先行列車312種 → input/f_train_ymulti/
+python generate_eval_csv_ymulti.py --rows 4500               # LLM評価用CSV → 評価用csv_Yamagata/
+python evaluate_csv_with_llm_ymulti.py --dry-run             # APIを呼ばずプロンプトを検証
+python evaluate_csv_with_llm_ymulti.py --workers 6           # LLM評価の本番実行（.env が必要）
+python train_reward_network_ymulti.py                        # 報酬NNの学習（train_reward_csv_direct_Yamagata/）
+python apex_ymulti.py                                        # Apex DQN 学習（報酬NNがあれば自動で使用）
+python apex_ymulti.py --reward rule                          # 報酬NN無しで環境・DQNの構造を検証
 
 # 回帰NNの学習（train_reward_csv_direct/のデータを使用・既定はHL-Gaussianヘッド）
 python train_reward_network2.py
